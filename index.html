@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>太陽光発電所 監視カメラ</title>
+<style>
+body{background:#111;color:#eee;font-family:sans-serif;text-align:center;margin:0;padding:16px;}
+h1{font-size:1.1em;color:#aaa;margin:0 0 12px;}
+.selector-row{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;margin-bottom:12px;}
+.day-btn{background:#222;color:#eee;border:1px solid #444;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;}
+.day-btn.active{background:#1a5c3a;border-color:#2a8;color:#7fe;}
+select{background:#222;color:#eee;border:1px solid #444;border-radius:8px;padding:7px 10px;font-size:13px;}
+.capture-btn{background:#6b3000;color:#ffa060;border:1px solid #f70;border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer;}
+.capture-btn:disabled{background:#333;color:#666;border-color:#444;cursor:not-allowed;}
+#capture-msg{font-size:12px;color:#8f8;margin:4px 0 8px;}
+#main-img{max-width:100%;border:2px solid #444;border-radius:8px;margin:8px auto;display:block;}
+#img-time{color:#888;font-size:12px;margin:4px 0 10px;}
+.section-label{font-size:11px;color:#666;margin:10px 0 6px;text-align:left;}
+.thumb-row{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px;}
+.thumb{background:#2a2a2a;border-radius:6px;min-width:70px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;color:#888;border:1px solid #333;cursor:pointer;flex-shrink:0;}
+.thumb:hover{border-color:#666;}
+.thumb.active{border-color:#aaa;background:#333;}
+.thumb.manual{border-color:#2a8;background:#0d2e1e;}
+.thumb.manual .thumb-time{color:#7fe;}
+.thumb.manual .thumb-label{color:#2a8;}
+.thumb-time{font-size:12px;font-weight:500;color:#ccc;margin-bottom:2px;}
+.thumb-label{font-size:10px;}
+.legend{display:flex;gap:12px;justify-content:center;font-size:11px;color:#666;margin:8px 0;}
+.legend-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle;}
+</style>
+</head>
+<body>
+<h1>太陽光発電所 監視カメラ</h1>
+<a href="monthly.html" style="color:#7af;font-size:13px;text-decoration:none;">月次サマリーを見る →</a>
+
+<div class="selector-row">
+  <button class="day-btn active" onclick="selectToday()">今日</button>
+  <button class="day-btn" onclick="selectYesterday()">昨日</button>
+  <select id="sel-year" onchange="onSelectChange()"></select>
+  <select id="sel-month" onchange="onSelectChange()"></select>
+  <select id="sel-day" onchange="onSelectChange()"></select>
+  <button class="capture-btn" id="capture-btn" onclick="requestCapture()">今すぐ撮影</button>
+</div>
+<div id="capture-msg"></div>
+
+<img id="main-img" src="" alt="カメラ画像">
+<div id="img-time">画像を選択してください</div>
+
+<div class="legend">
+  <span><span class="legend-dot" style="background:#444;"></span>自動撮影</span>
+  <span><span class="legend-dot" style="background:#1a5c3a;border:1px solid #2a8;"></span>手動撮影</span>
+</div>
+
+<div class="section-label" id="section-label"></div>
+<div class="thumb-row" id="thumb-row"></div>
+
+<script>
+let allFiles = [];
+let currentDate = '';
+
+function pad(n){return String(n).padStart(2,'0');}
+
+function dateStr(d){
+  return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate());
+}
+
+function selectToday(){
+  const d = new Date();
+  setDate(dateStr(d));
+  document.querySelectorAll('.day-btn').forEach(b=>b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+function selectYesterday(){
+  const d = new Date();
+  d.setDate(d.getDate()-1);
+  setDate(dateStr(d));
+  document.querySelectorAll('.day-btn').forEach(b=>b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+function onSelectChange(){
+  document.querySelectorAll('.day-btn').forEach(b=>b.classList.remove('active'));
+  const y = document.getElementById('sel-year').value;
+  const m = document.getElementById('sel-month').value;
+  const day = document.getElementById('sel-day').value;
+  setDate(y+pad(m)+pad(day));
+}
+
+function setDate(ds){
+  currentDate = ds;
+  const y = ds.substring(0,4);
+  const m = parseInt(ds.substring(4,6));
+  const d = parseInt(ds.substring(6,8));
+  document.getElementById('sel-year').value = y;
+  document.getElementById('sel-month').value = m;
+  document.getElementById('sel-day').value = d;
+  document.getElementById('section-label').textContent =
+    y+'/'+pad(m)+'/'+pad(d)+' の画像';
+  renderThumbs(ds);
+}
+
+function renderThumbs(ds){
+  const files = allFiles.filter(f=>f.startsWith(ds));
+  const row = document.getElementById('thumb-row');
+  if(files.length===0){
+    row.innerHTML='<span style="color:#555;font-size:13px;padding:10px;">この日の画像はありません</span>';
+    return;
+  }
+  row.innerHTML = files.map((f,i)=>{
+    const h = f.substring(9,11);
+    const min = f.substring(11,13);
+    const isManual = min !== '00';
+    const cls = 'thumb'+(isManual?' manual':'')+(i===files.length-1?' active':'');
+    const label = isManual ? '手動' : '自動';
+    return '<div class="'+cls+'" onclick="showImg(\''+f+'\')">'
+      +'<span class="thumb-time">'+h+':'+min+'</span>'
+      +'<span class="thumb-label">'+label+'</span>'
+      +'</div>';
+  }).join('');
+  if(files.length>0) showImg(files[files.length-1]);
+}
+
+function showImg(f){
+  document.getElementById('main-img').src='images/'+f;
+  const y=f.substring(0,4),mo=f.substring(4,6),d=f.substring(6,8);
+  const h=f.substring(9,11),mi=f.substring(11,13);
+  const label = mi!=='00' ? ' (手動撮影)' : ' (自動撮影)';
+  document.getElementById('img-time').textContent=y+'/'+mo+'/'+d+' '+h+':'+mi+label;
+  document.querySelectorAll('.thumb').forEach(t=>t.classList.remove('active'));
+  event&&event.currentTarget&&event.currentTarget.classList.add('active');
+}
+
+function requestCapture(){
+  const btn=document.getElementById('capture-btn');
+  const msg=document.getElementById('capture-msg');
+  btn.disabled=true;
+  btn.textContent='撮影中...';
+  msg.textContent='約2分後に最新画像が追加されます';
+  fetch('/capture',{method:'POST'})
+    .then(()=>{setTimeout(()=>location.reload(),120000);})
+    .catch(()=>{
+      msg.textContent='エラーが発生しました';
+      btn.disabled=false;
+      btn.textContent='今すぐ撮影';
+    });
+}
+
+function initSelectors(files){
+  const days = [...new Set(files.map(f=>f.substring(0,8)))].sort().reverse();
+  const years = [...new Set(days.map(d=>d.substring(0,4)))];
+  const months = [...new Set(days.map(d=>parseInt(d.substring(4,6))))].sort((a,b)=>b-a);
+  const dayNums = [...new Set(days.map(d=>parseInt(d.substring(6,8))))].sort((a,b)=>b-a);
+
+  const sy=document.getElementById('sel-year');
+  const sm=document.getElementById('sel-month');
+  const sd=document.getElementById('sel-day');
+  sy.innerHTML=years.map(y=>'<option>'+y+'</option>').join('');
+  sm.innerHTML=months.map(m=>'<option value="'+m+'">'+m+'月</option>').join('');
+  sd.innerHTML=dayNums.map(d=>'<option value="'+d+'">'+d+'日</option>').join('');
+}
+
+fetch('images/')
+  .then(r=>r.text())
+  .then(html=>{
+    allFiles=[...html.matchAll(/href="(\d{8}_\d{4}\.jpg)"/g)]
+      .map(m=>m[1]).sort();
+    initSelectors(allFiles);
+    const today=dateStr(new Date());
+    setDate(today);
+  });
+</script>
+</body>
+</html>

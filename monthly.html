@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>月次サマリー</title>
+<style>
+body{background:#111;color:#eee;font-family:sans-serif;text-align:center;margin:0;padding:16px;}
+h1{font-size:1.1em;color:#aaa;margin:0 0 12px;}
+.back-btn{color:#7af;font-size:13px;text-decoration:none;display:inline-block;margin-bottom:16px;}
+.month-card{background:#1a1a1a;border:1px solid #333;border-radius:8px;margin:12px auto;max-width:100%;overflow:hidden;}
+.month-header{background:#222;padding:8px 14px;font-size:13px;color:#aaa;text-align:left;}
+.month-img{max-width:100%;display:block;}
+#no-data{color:#555;margin-top:40px;}
+</style>
+</head>
+<body>
+<h1>月次サマリー</h1>
+<a class="back-btn" href="/">← カメラトップへ戻る</a>
+<div id="list"></div>
+<div id="no-data"></div>
+<script>
+fetch('monthly/')
+  .then(r=>r.text())
+  .then(html=>{
+    const files=[...html.matchAll(/href="(\d{6}\.jpg)"/g)]
+      .map(m=>m[1]).sort().reverse();
+    if(files.length===0){
+      document.getElementById('no-data').textContent='まだ月次サマリーはありません';
+      return;
+    }
+    document.getElementById('list').innerHTML=files.map(f=>{
+      const y=f.substring(0,4);
+      const m=parseInt(f.substring(4,6));
+      return '<div class="month-card">'
+        +'<div class="month-header">'+y+'年'+m+'月</div>'
+        +'<img class="month-img" src="monthly/'+f+'" alt="'+y+'年'+m+'月サマリー">'
+        +'</div>';
+    }).join('');
+  })
+  .catch(()=>{
+    document.getElementById('no-data').textContent='データ取得エラー';
+  });
+</script>
+</body>
+</html>

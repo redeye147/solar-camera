@@ -1,0 +1,30 @@
+"""
+solar-camera 設定ファイル（テンプレート）
+
+実運用時は本ファイルを config.py にコピーし、各値を環境に合わせて書き換えてください。
+config.py は .gitignore で除外されており、リポジトリには含まれません。
+"""
+
+# --- カメラ（Reolink等のRTSPカメラ） ---
+CAMERA_USER = "admin"
+CAMERA_PASS = "your_camera_password"
+CAMERA_HOST = "192.168.1.xxx"
+CAMERA_PORT = 554
+CAMERA_PATH = "h264Preview_01_sub"  # カメラ機種により異なる
+RTSP_URL = f"rtsp://{CAMERA_USER}:{CAMERA_PASS}@{CAMERA_HOST}:{CAMERA_PORT}/{CAMERA_PATH}"
+
+# --- ConoHa VPS（画像配信サーバー） ---
+CONOHA_HOST = "xxx.xxx.xxx.xxx"      # ConoHa VPSのIPアドレス
+CONOHA_USER = "your_user"            # SSH/SCP用ユーザー名
+
+CONOHA_REMOTE_BASE    = "/var/www/html/solar"
+CONOHA_IMG_DIR        = f"{CONOHA_REMOTE_BASE}/images"
+CONOHA_MONTHLY_DIR    = f"{CONOHA_REMOTE_BASE}/monthly"
+CONOHA_TRIGGER        = f"{CONOHA_REMOTE_BASE}/trigger"
+CONOHA_NETWORK_ALERT  = f"{CONOHA_REMOTE_BASE}/network_alert.txt"
+
+# --- SSH ---
+SSH_KEY = "/home/pi/.ssh/id_rsa"     # ConoHaへのSSH鍵パス
+
+# --- 通知（将来拡張用） ---
+GMAIL_ADDRESS = "your_address@gmail.com"
