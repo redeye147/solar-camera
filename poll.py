@@ -1,7 +1,26 @@
 #!/usr/bin/env python3
-import subprocess
+import subprocess, os, glob
 import config
 
+RETRY_DIR = "/home/pi/solar/retry"
+os.makedirs(RETRY_DIR, exist_ok=True)
+
+# リトライ転送
+for f in sorted(glob.glob(f"{RETRY_DIR}/*.jpg")):
+    r = subprocess.run([
+        "scp", "-i", config.SSH_KEY,
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "ConnectTimeout=15",
+        f, f"{config.CONOHA_USER}@{config.CONOHA_HOST}:{config.CONOHA_PATH}/"
+    ], capture_output=True)
+    if r.returncode == 0:
+        print(f"✅ リトライ転送成功: {os.path.basename(f)}")
+        os.remove(f)
+    else:
+        print(f"❌ リトライ失敗: {os.path.basename(f)}")
+        break
+
+# トリガー確認
 result = subprocess.run([
     "ssh", "-i", config.SSH_KEY,
     "-o", "StrictHostKeyChecking=no",
