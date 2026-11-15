@@ -28,3 +28,9 @@ SSH_KEY = "/home/pi/.ssh/id_rsa"     # ConoHaへのSSH鍵パス
 
 # --- 通知（将来拡張用） ---
 GMAIL_ADDRESS = "your_address@gmail.com"
+
+# --- ネットワーク監視 / リトライ（省略可。未設定時は既定値） ---
+# NET_IFACE = "eth0"
+# NM_CONNECTION = "eth0-auto"
+# NETWORK_ALERT_LOCAL = "/home/pi/solar/network_alert.txt"
+# RETRY_DIR = "/home/pi/solar/retry"

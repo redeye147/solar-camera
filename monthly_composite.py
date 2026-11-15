@@ -28,7 +28,7 @@ for day in range(1, days + 1):
     local = f"{TMP_DIR}/{fname}"
     result = subprocess.run([
         "scp", "-i", config.SSH_KEY,
-        "-o", "StrictHostKeyChecking=no",
+        "-o", "StrictHostKeyChecking=accept-new",
         "-o", "ConnectTimeout=10",
         f"{config.CONOHA_USER}@{config.CONOHA_HOST}:{config.CONOHA_IMG_DIR}/{fname}",
         local
@@ -79,7 +79,7 @@ print(f"合成完了: {out_path} ({size_kb:.0f}KB)")
 
 result = subprocess.run([
     "scp", "-i", config.SSH_KEY,
-    "-o", "StrictHostKeyChecking=no",
+    "-o", "StrictHostKeyChecking=accept-new",
     out_path,
     f"{config.CONOHA_USER}@{config.CONOHA_HOST}:{config.CONOHA_MONTHLY_DIR}/"
 ], capture_output=True)
