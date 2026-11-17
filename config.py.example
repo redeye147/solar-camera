@@ -44,4 +44,5 @@ GMAIL_ADDRESS = "your_address@gmail.com"
 # --- SIM通信量レポート（monthly_traffic.py、省略可） ---
 # SIM_IFACE = "wwan0"
 # SIM_LIMIT_MB = 1000
+# BILLING_START_DAY = 7                  # 課金期間の開始日（7日〜翌月6日）
 # CONOHA_TRAFFIC_REPORT = f"{CONOHA_REMOTE_BASE}/traffic_report.txt"
