@@ -135,30 +135,26 @@ NetworkManager の route metric で出口を決めます（小さいほど優先
 
 | 接続 | デバイス | metric | 役割 |
 | --- | --- | --- | --- |
-| `nihontsushin` (gsm) | SIMドングル (wwan0) | 700 | 主回線 |
-| `eth0-auto` | USB LAN (eth0) | 800 | 予備回線 / 現場ではカメラLAN |
+| `eth0-auto` | USB LAN (eth0) | 600 | 優先。自宅ではルーター経由で通信し SIM を節約 |
+| `nihontsushin` (gsm) | SIMドングル (wwan0) | 700 | 予備。現場（eth0 はカメラ用でゲートウェイ無し）では自動的にこちら |
 
 ```bash
-sudo nmcli connection modify nihontsushin ipv4.route-metric 700
-sudo nmcli connection modify eth0-auto ipv4.never-default no ipv4.route-metric 800
-```
-
-通信量の多い作業（`apt` など）を一時的に LAN 経由にしたいときは、SIM の metric を下げて**接続を張り直し**、終わったら必ず戻します。`nmcli device reapply` はモデムには効かず、SIM の経路が消えることがあるので使わないこと。
-
-```bash
-sudo nmcli connection modify nihontsushin ipv4.route-metric 900 && sudo nmcli connection up nihontsushin
-# ... 作業 ...
 sudo nmcli connection modify nihontsushin ipv4.route-metric 700 && sudo nmcli connection up nihontsushin
+sudo nmcli connection modify eth0-auto ipv4.never-default no ipv4.route-metric 600 && sudo nmcli device reapply eth0
 ```
+
+- LAN のゲートウェイはあるのにインターネットに出られないとき（ルーター/回線障害）は、`check_network.py` が eth0 の metric を 900 に下げて SIM に切り替え、LAN が戻れば 600 に戻します。
+- モデム（SIM）側の metric 変更は `nmcli device reapply` では反映されず、SIM の経路が消えることがあるため、必ず `nmcli connection up` で張り直すこと。
 
 > Tailscale のノードは管理画面で **Disable key expiry** にしておくこと（既定の180日で期限切れになり遠隔接続できなくなる）。
 
 ### ネットワーク自己復旧（`check_network.py`）
 
 1. 1.1.1.1 / 8.8.8.8 への ping で「インターネットに出られるか」を判定（約15秒の猶予で瞬断は無視）
-2. 断のときは段階的に復旧: SIM再接続 → モデムリセット → LAN再接続
-3. 復旧できない状態が `NET_REBOOT_AFTER_RUNS` 回（既定6回=30分）続くごとに再起動
-4. 復旧時・経路変更（wwan0⇔eth0）時に `network_alert.txt`（直近200行）を ConoHa へ送信
+2. LAN だけ不通で SIM が生きていれば、eth0 の metric を下げて SIM に切替（LAN 復帰で自動的に戻す）
+3. どの経路でも出られないときは段階的に復旧: SIM再接続 → モデムリセット → LAN再接続
+4. 復旧できない状態が `NET_REBOOT_AFTER_RUNS` 回（既定6回=30分）続くごとに再起動
+5. 復旧時・経路変更（wwan0⇔eth0）時に `network_alert.txt`（直近200行）を ConoHa へ送信
 
 ### 月次サマリー（`monthly_composite.py`）
 

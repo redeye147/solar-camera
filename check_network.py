@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """インターネット疎通を監視し、断のときだけ段階的に復旧・記録する。
 
-構成の前提:
-  - 主回線: SIMドングル (NetworkManager の gsm 接続, metric 700)
-  - 予備  : eth0 (eth0-auto, metric 800)。現場ではカメラ用LAN
-  経路の優先は NetworkManager の metric に任せ、本スクリプトは
-  「どの経路でもいいのでインターネットに出られるか」だけを見る。
+構成の前提 (NetworkManager の route metric、小さいほど優先):
+  - 優先: eth0 (eth0-auto, metric LAN_METRIC=600)
+          自宅ではルーター経由でインターネットに出られる → SIMを節約
+          現場はカメラ用LANでゲートウェイが無い → 自動的にSIMが使われる
+  - 予備: SIMドングル (gsm 接続, metric 700)
 
-復旧の段階:
+LANフェイルオーバー:
+  LANのゲートウェイはあるのにインターネットに出られない (ルーター/回線障害)
+  ときは、eth0 の metric を LAN_FALLBACK_METRIC(900) に下げて SIM に切替。
+  切替中も毎回 LAN 経由の疎通を試し、戻ったら LAN_METRIC に戻す。
+
+復旧の段階 (どの経路でも出られないとき):
   1. SIM接続の張り直し (nmcli down/up)
   2. モデムのリセット (mmcli --reset)
   3. LAN接続の張り直し
@@ -31,6 +36,10 @@ GSM_CONN = getattr(config, "GSM_CONNECTION", "nihontsushin")
 LAN_CONN = getattr(config, "NM_CONNECTION", "eth0-auto")
 TARGETS = getattr(config, "PING_TARGETS", ["1.1.1.1", "8.8.8.8"])
 REBOOT_AFTER = getattr(config, "NET_REBOOT_AFTER_RUNS", 6)  # 0 で再起動しない
+LAN_DEV = getattr(config, "LAN_IFACE", "eth0")
+SIM_DEV = getattr(config, "SIM_IFACE", "wwan0")
+LAN_METRIC = getattr(config, "LAN_METRIC", 600)
+LAN_FALLBACK_METRIC = getattr(config, "LAN_FALLBACK_METRIC", 900)
 
 GRACE_CHECKS = 4        # 断と判定するまでの確認回数
 GRACE_INTERVAL = 5      # 確認間隔(秒)
@@ -67,6 +76,15 @@ def online():
     return False
 
 
+def online_via(dev):
+    """指定インターフェース経由でインターネットに出られるか。"""
+    for t in TARGETS:
+        r = run(["ping", "-I", dev, "-c", "1", "-W", "3", t], timeout=10)
+        if r and r.returncode == 0:
+            return True
+    return False
+
+
 def confirmed_offline():
     """猶予時間内に一度でも疎通すれば False (一瞬の瞬断は無視)。"""
     for i in range(GRACE_CHECKS):
@@ -88,6 +106,13 @@ def route_dev():
 
 def nmcli(*args, timeout=90):
     return run(["sudo", "nmcli", *args], timeout=timeout)
+
+
+def set_lan_metric(metric):
+    # eth0 は reapply で metric が反映される (モデムには効かないので使わない)
+    nmcli("connection", "modify", LAN_CONN, "ipv4.route-metric", str(metric))
+    nmcli("device", "reapply", LAN_DEV)
+    time.sleep(3)
 
 
 def step_sim_reconnect():
@@ -113,12 +138,14 @@ RECOVERY_STEPS = [
 ]
 
 
-def recover():
+def recover(state):
     for name, fn in RECOVERY_STEPS:
         fn()
         time.sleep(10)
         if online():
             return name
+        if try_lan_failover(state):  # SIMだけ戻った場合は SIM優先に切替
+            return f"{name} + SIM優先に切替"
     return None
 
 
@@ -161,18 +188,43 @@ def on_online(state):
     elif state.get("dev") and dev and dev != state["dev"]:
         log(f"経路変更 {state['dev']} → {dev}")
         notify = True
-    save_state({"dev": dev})
+    state.pop("down_since", None)
+    state.pop("fail_runs", None)
+    state["dev"] = dev
+    save_state(state)
     if notify:
         send_alert_to_conoha()
 
 
+def try_lan_failover(state):
+    """LANだけがダメでSIMは生きているなら、SIM優先に切り替える。"""
+    if state.get("lan_demoted") or online_via(LAN_DEV) or not online_via(SIM_DEV):
+        return False
+    set_lan_metric(LAN_FALLBACK_METRIC)
+    state["lan_demoted"] = True
+    log(f"LAN経由でインターネットに出られないため SIM優先に切替 (eth0 metric {LAN_FALLBACK_METRIC})")
+    return online()
+
+
+def try_lan_restore(state):
+    """SIMへ切替中に LAN の疎通が戻っていれば LAN優先に戻す。"""
+    if state.get("lan_demoted") and online_via(LAN_DEV):
+        set_lan_metric(LAN_METRIC)
+        state.pop("lan_demoted")
+        log(f"LANの疎通が復帰したため LAN優先に戻しました (eth0 metric {LAN_METRIC})")
+
+
 def on_offline(state):
+    if try_lan_failover(state):
+        on_online(state)
+        return
+
     if not state.get("down_since"):
         state["down_since"] = now()
         log(f"インターネット断を検出 (経路: {route_dev()})")
     state["fail_runs"] = state.get("fail_runs", 0) + 1
 
-    how = recover()
+    how = recover(state)
     if how:
         log(f"復旧処理成功: {how} (経路: {route_dev()})")
         on_online(state)
@@ -195,6 +247,7 @@ def main():
         sys.exit(0)  # 前回の実行(復旧処理中)がまだ動いている
 
     state = load_state()
+    try_lan_restore(state)
     if online() or not confirmed_offline():
         on_online(state)
     else:
