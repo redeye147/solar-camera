@@ -22,7 +22,9 @@
 | `capture.py` | RTSPカメラから1枚撮影し、リサイズ・JPEG圧縮してConoHaへSCP転送 |
 | `poll.py` | ConoHa上の `trigger` ファイルの有無を確認し、存在すれば手動撮影を実行 |
 | `check_network.py` | eth0の疎通を監視し、切断時にNetworkManagerで自動復旧 |
-| `monthly_composite.py` | 前月の毎日12:00画像をグリッド合成し、月次サマリー画像を生成 |
+| `monthly_composite.py` | 当月の毎日12:00画像をグリッド合成し、月次サマリー画像を生成 |
+| `monthly_traffic.py` | SIM(wwan0)の前月通信量をvnstatで集計しレポート転送 |
+| `mode_test.sh` / `mode_production.sh` | Wi-Fiの有効/無効切替（保守用/本番用） |
 | `index.html` | カメラ画像閲覧UI（日次・サムネイル・手動撮影） |
 | `monthly.html` | 月次サマリー閲覧UI |
 | `config.py.example` | 設定テンプレート（カメラIP/パスワード等） |
@@ -80,18 +82,26 @@ Raspberry Pi → ConoHa の鍵認証を有効にしておきます（`config.py`
 Raspberry Pi の crontab：
 
 ```cron
-# 毎時0分に自動撮影
-0 * * * * /usr/bin/python3 /home/pi/solar/capture.py >> /home/pi/solar/capture.log 2>&1
+# 4〜20時の毎時0分に自動撮影
+0 4-20 * * * /usr/bin/python3 /home/pi/solar/capture.py >> /home/pi/solar/capture.log 2>&1
 
-# 1分毎に手動撮影トリガーをポーリング
-* * * * * /usr/bin/python3 /home/pi/solar/poll.py >> /home/pi/solar/poll.log 2>&1
+# 2分毎に手動撮影トリガーとリトライ転送
+*/2 * * * * /usr/bin/python3 /home/pi/solar/poll.py >> /home/pi/solar/poll.log 2>&1
 
 # 5分毎にネットワーク自己診断
-*/5 * * * * /usr/bin/python3 /home/pi/solar/check_network.py
+*/5 * * * * /usr/bin/python3 /home/pi/solar/check_network.py >> /home/pi/solar/network.log 2>&1
 
-# 毎月1日 03:00 に前月の月次合成
-0 3 1 * * /usr/bin/python3 /home/pi/solar/monthly_composite.py >> /home/pi/solar/monthly.log 2>&1
+# 毎日21:05に当月の月次合成を更新
+5 21 * * * /usr/bin/python3 /home/pi/solar/monthly_composite.py >> /home/pi/solar/monthly.log 2>&1
+
+# 毎月1日 01:30 に前月のSIM通信量レポート（要 vnstat）
+30 1 1 * * /usr/bin/python3 /home/pi/solar/monthly_traffic.py >> /home/pi/solar/traffic.log 2>&1
 ```
+
+### 6. 運用モード切替
+
+- `mode_test.sh` — Wi-Fi を有効化（自宅での保守用）
+- `mode_production.sh` — Wi-Fi を無効化（現場運用）
 
 ## 動作概要
 
@@ -133,7 +143,11 @@ sudo nmcli connection modify eth0-auto ipv4.never-default no ipv4.route-metric 8
 
 ### 月次サマリー（`monthly_composite.py`）
 
-- 前月の各日12:00画像を6列のグリッド合成し、`YYYYMM.jpg` として生成・転送
+- 当月の各日12:00画像を6列のグリッド合成し、`YYYYMM.jpg` として生成・転送（毎日実行で途中経過を更新）
+
+### SIM通信量レポート（`monthly_traffic.py`）
+
+- vnstat で前月の wwan0 通信量を集計し、上限（既定1000MB）に対する使用率を `traffic_report.txt` として転送
 
 ## ライセンス
 

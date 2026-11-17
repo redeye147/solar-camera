@@ -178,9 +178,11 @@ def on_offline(state):
         on_online(state)
         return
 
-    log(f"復旧処理失敗 ({state['fail_runs']}回目)")
+    reboot = REBOOT_AFTER and state["fail_runs"] % REBOOT_AFTER == 0
+    if state["fail_runs"] == 1 or reboot:  # ログの連発を避ける
+        log(f"復旧処理失敗 ({state['fail_runs']}回目)")
     save_state(state)
-    if REBOOT_AFTER and state["fail_runs"] % REBOOT_AFTER == 0:
+    if reboot:
         log("断が続いているため再起動します")
         run(["sudo", "reboot"])
 
