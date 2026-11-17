@@ -34,10 +34,21 @@
 
 ### 1. リポジトリ取得
 
+Raspberry Pi の `/home/pi/solar` は GitHub の `main` を追跡する作業フォルダーです。
+
 ```bash
-git clone https://github.com/redeye147/solar-camera.git
-cd solar-camera
+git clone https://github.com/redeye147/solar-camera.git /home/pi/solar
+cd /home/pi/solar
 ```
+
+### 更新の反映（Mac などから）
+
+```bash
+ssh pi@solarcam 'cd ~/solar && git pull --ff-only && git log --oneline -1'
+```
+
+- Pi 上でファイルを直接編集していると `--ff-only` で止まります（上書きはしません）。その場合は `git status` で確認してください。
+- `config.py`・ログ・`retry/` などは Git の管理対象外です。
 
 ### 2. 設定ファイル作成
 
@@ -130,6 +141,14 @@ NetworkManager の route metric で出口を決めます（小さいほど優先
 ```bash
 sudo nmcli connection modify nihontsushin ipv4.route-metric 700
 sudo nmcli connection modify eth0-auto ipv4.never-default no ipv4.route-metric 800
+```
+
+通信量の多い作業（`apt` など）を一時的に LAN 経由にしたいときは、SIM の metric を下げて**接続を張り直し**、終わったら必ず戻します。`nmcli device reapply` はモデムには効かず、SIM の経路が消えることがあるので使わないこと。
+
+```bash
+sudo nmcli connection modify nihontsushin ipv4.route-metric 900 && sudo nmcli connection up nihontsushin
+# ... 作業 ...
+sudo nmcli connection modify nihontsushin ipv4.route-metric 700 && sudo nmcli connection up nihontsushin
 ```
 
 > Tailscale のノードは管理画面で **Disable key expiry** にしておくこと（既定の180日で期限切れになり遠隔接続できなくなる）。
