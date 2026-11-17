@@ -30,7 +30,10 @@ SSH_KEY = "/home/pi/.ssh/id_rsa"     # ConoHaへのSSH鍵パス
 GMAIL_ADDRESS = "your_address@gmail.com"
 
 # --- ネットワーク監視 / リトライ（省略可。未設定時は既定値） ---
-# NET_IFACE = "eth0"
-# NM_CONNECTION = "eth0-auto"
+# GSM_CONNECTION = "nihontsushin"        # SIMドングルのNetworkManager接続名 (主回線)
+# NM_CONNECTION = "eth0-auto"            # 有線LANの接続名 (予備回線)
+# PING_TARGETS = ["1.1.1.1", "8.8.8.8"]  # 疎通確認先
+# NET_REBOOT_AFTER_RUNS = 6              # 復旧失敗がこの回数続くごとに再起動 (0で無効)
 # NETWORK_ALERT_LOCAL = "/home/pi/solar/network_alert.txt"
+# NETWORK_STATE = "/home/pi/solar/network_state.json"
 # RETRY_DIR = "/home/pi/solar/retry"
