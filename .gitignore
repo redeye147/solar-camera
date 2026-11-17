@@ -21,3 +21,9 @@ Thumbs.db
 .idea/
 *.swp
 *~
+
+# 実行時の状態ファイル
+network_state.json
+network_alert.txt
+.check_network.lock
+retry/

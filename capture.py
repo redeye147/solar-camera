@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-import subprocess, datetime, os, io
+import subprocess, datetime, os, io, shutil
 from PIL import Image
 import config
 
 TMP_RAW   = "/tmp/capture_raw.jpg"
 TMP_DIR   = "/tmp/solar"
+RETRY_DIR = getattr(config, "RETRY_DIR",
+                    os.path.join(os.path.dirname(os.path.abspath(__file__)), "retry"))
 MAX_BYTES = 62500
 RESIZE_W  = 1280
 
 os.makedirs(TMP_DIR, exist_ok=True)
+os.makedirs(RETRY_DIR, exist_ok=True)
 
 print("撮影中...")
 result = subprocess.run([
@@ -23,7 +26,7 @@ result = subprocess.run([
 
 if not os.path.exists(TMP_RAW):
     print("撮影失敗")
-    print(result.stderr.decode())
+    print(result.stderr.decode().replace(config.CAMERA_PASS, "****"))
     exit(1)
 
 img = Image.open(TMP_RAW)
@@ -51,7 +54,7 @@ os.remove(TMP_RAW)
 result = subprocess.run([
     "scp",
     "-i", config.SSH_KEY,
-    "-o", "StrictHostKeyChecking=no",
+    "-o", "StrictHostKeyChecking=accept-new",
     "-o", "ConnectTimeout=30",
     out_path,
     f"{config.CONOHA_USER}@{config.CONOHA_HOST}:{config.CONOHA_IMG_DIR}/"
@@ -61,4 +64,5 @@ if result.returncode == 0:
     print("✅ ConoHa転送成功")
     os.remove(out_path)
 else:
-    print("❌ 転送失敗:", result.stderr.decode())
+    print("❌ 転送失敗 → retryへ退避:", result.stderr.decode())
+    shutil.move(out_path, os.path.join(RETRY_DIR, os.path.basename(out_path)))

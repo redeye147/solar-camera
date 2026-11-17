@@ -28,3 +28,17 @@ SSH_KEY = "/home/pi/.ssh/id_rsa"     # ConoHaへのSSH鍵パス
 
 # --- 通知（将来拡張用） ---
 GMAIL_ADDRESS = "your_address@gmail.com"
+
+# --- ネットワーク監視 / リトライ（省略可。未設定時は既定値） ---
+# GSM_CONNECTION = "nihontsushin"        # SIMドングルのNetworkManager接続名 (主回線)
+# NM_CONNECTION = "eth0-auto"            # 有線LANの接続名 (予備回線)
+# PING_TARGETS = ["1.1.1.1", "8.8.8.8"]  # 疎通確認先
+# NET_REBOOT_AFTER_RUNS = 6              # 復旧失敗がこの回数続くごとに再起動 (0で無効)
+# NETWORK_ALERT_LOCAL = "/home/pi/solar/network_alert.txt"
+# NETWORK_STATE = "/home/pi/solar/network_state.json"
+# RETRY_DIR = "/home/pi/solar/retry"
+
+# --- SIM通信量レポート（monthly_traffic.py、省略可） ---
+# SIM_IFACE = "wwan0"
+# SIM_LIMIT_MB = 1000
+# CONOHA_TRAFFIC_REPORT = f"{CONOHA_REMOTE_BASE}/traffic_report.txt"

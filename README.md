@@ -5,10 +5,10 @@
 ## 構成
 
 ```
-[RTSPカメラ] ──RTSP──> [Raspberry Pi] ──SCP──> [ConoHa VPS (Web)]
-                          │                         │
-                          │                         └─ Webブラウザから閲覧
-                          └─ ネットワーク自己復旧
+[RTSPカメラ] ──RTSP──> [Raspberry Pi Zero] ══SIM(LTE)══> [ConoHa VPS (Web)]
+      │                    │  (USBハブ: LAN+SIMドングル)    │
+      └──── LAN(eth0) ─────┘                              └─ Webブラウザから閲覧
+                           └─ ネットワーク自己復旧 / Tailscaleで遠隔保守
 ```
 
 - **Raspberry Pi**: 撮影、ネットワーク監視、月次サマリー生成
@@ -22,7 +22,9 @@
 | `capture.py` | RTSPカメラから1枚撮影し、リサイズ・JPEG圧縮してConoHaへSCP転送 |
 | `poll.py` | ConoHa上の `trigger` ファイルの有無を確認し、存在すれば手動撮影を実行 |
 | `check_network.py` | eth0の疎通を監視し、切断時にNetworkManagerで自動復旧 |
-| `monthly_composite.py` | 前月の毎日12:00画像をグリッド合成し、月次サマリー画像を生成 |
+| `monthly_composite.py` | 当月の毎日12:00画像をグリッド合成し、月次サマリー画像を生成 |
+| `monthly_traffic.py` | SIM(wwan0)の前月通信量をvnstatで集計しレポート転送 |
+| `mode_test.sh` / `mode_production.sh` | Wi-Fiの有効/無効切替（保守用/本番用） |
 | `index.html` | カメラ画像閲覧UI（日次・サムネイル・手動撮影） |
 | `monthly.html` | 月次サマリー閲覧UI |
 | `config.py.example` | 設定テンプレート（カメラIP/パスワード等） |
@@ -80,18 +82,26 @@ Raspberry Pi → ConoHa の鍵認証を有効にしておきます（`config.py`
 Raspberry Pi の crontab：
 
 ```cron
-# 毎時0分に自動撮影
-0 * * * * /usr/bin/python3 /home/pi/solar/capture.py >> /home/pi/solar/capture.log 2>&1
+# 4〜20時の毎時0分に自動撮影
+0 4-20 * * * /usr/bin/python3 /home/pi/solar/capture.py >> /home/pi/solar/capture.log 2>&1
 
-# 1分毎に手動撮影トリガーをポーリング
-* * * * * /usr/bin/python3 /home/pi/solar/poll.py >> /home/pi/solar/poll.log 2>&1
+# 2分毎に手動撮影トリガーとリトライ転送
+*/2 * * * * /usr/bin/python3 /home/pi/solar/poll.py >> /home/pi/solar/poll.log 2>&1
 
 # 5分毎にネットワーク自己診断
-*/5 * * * * /usr/bin/python3 /home/pi/solar/check_network.py
+*/5 * * * * /usr/bin/python3 /home/pi/solar/check_network.py >> /home/pi/solar/network.log 2>&1
 
-# 毎月1日 03:00 に前月の月次合成
-0 3 1 * * /usr/bin/python3 /home/pi/solar/monthly_composite.py >> /home/pi/solar/monthly.log 2>&1
+# 毎日21:05に当月の月次合成を更新
+5 21 * * * /usr/bin/python3 /home/pi/solar/monthly_composite.py >> /home/pi/solar/monthly.log 2>&1
+
+# 毎月1日 01:30 に前月のSIM通信量レポート（要 vnstat）
+30 1 1 * * /usr/bin/python3 /home/pi/solar/monthly_traffic.py >> /home/pi/solar/traffic.log 2>&1
 ```
+
+### 6. 運用モード切替
+
+- `mode_test.sh` — Wi-Fi を有効化（自宅での保守用）
+- `mode_production.sh` — Wi-Fi を無効化（現場運用）
 
 ## 動作概要
 
@@ -108,15 +118,36 @@ Raspberry Pi の crontab：
 2. あれば `capture.py` を実行し、`trigger` を削除
 3. 手動分は分が `00` 以外になるため、UI上で「手動」ラベル表示
 
+### ネットワーク構成
+
+NetworkManager の route metric で出口を決めます（小さいほど優先）。
+
+| 接続 | デバイス | metric | 役割 |
+| --- | --- | --- | --- |
+| `nihontsushin` (gsm) | SIMドングル (wwan0) | 700 | 主回線 |
+| `eth0-auto` | USB LAN (eth0) | 800 | 予備回線 / 現場ではカメラLAN |
+
+```bash
+sudo nmcli connection modify nihontsushin ipv4.route-metric 700
+sudo nmcli connection modify eth0-auto ipv4.never-default no ipv4.route-metric 800
+```
+
+> Tailscale のノードは管理画面で **Disable key expiry** にしておくこと（既定の180日で期限切れになり遠隔接続できなくなる）。
+
 ### ネットワーク自己復旧（`check_network.py`）
 
-1. `ip addr show eth0` で IP 取得状況を確認
-2. 切断検出時は `nmcli` で接続をdown→upして再接続
-3. アラート内容を ConoHa にもアップロード
+1. 1.1.1.1 / 8.8.8.8 への ping で「インターネットに出られるか」を判定（約15秒の猶予で瞬断は無視）
+2. 断のときは段階的に復旧: SIM再接続 → モデムリセット → LAN再接続
+3. 復旧できない状態が `NET_REBOOT_AFTER_RUNS` 回（既定6回=30分）続くごとに再起動
+4. 復旧時・経路変更（wwan0⇔eth0）時に `network_alert.txt`（直近200行）を ConoHa へ送信
 
 ### 月次サマリー（`monthly_composite.py`）
 
-- 前月の各日12:00画像を6列のグリッド合成し、`YYYYMM.jpg` として生成・転送
+- 当月の各日12:00画像を6列のグリッド合成し、`YYYYMM.jpg` として生成・転送（毎日実行で途中経過を更新）
+
+### SIM通信量レポート（`monthly_traffic.py`）
+
+- vnstat で前月の wwan0 通信量を集計し、上限（既定1000MB）に対する使用率を `traffic_report.txt` として転送
 
 ## ライセンス
 
