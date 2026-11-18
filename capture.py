@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-import subprocess, datetime, os, io, shutil
+"""RTSPカメラから1枚撮影し、リサイズ・圧縮してConoHaへ転送する。
+
+カメラが一時的に応答しない（Connection refused など）ことがあるため、
+失敗時は CAPTURE_RETRY_WAIT 秒待って最大 CAPTURE_RETRIES 回まで撮り直す。
+ファイル名の時刻は撮影開始時刻で固定する（:00 撮影が撮り直しで :01 になり
+「手動」と誤表示されるのを防ぐ）。
+"""
+import subprocess, datetime, os, io, shutil, sys, time
 from PIL import Image
 import config
 
@@ -9,25 +16,56 @@ RETRY_DIR = getattr(config, "RETRY_DIR",
                     os.path.join(os.path.dirname(os.path.abspath(__file__)), "retry"))
 MAX_BYTES = 62500
 RESIZE_W  = 1280
+RETRIES   = getattr(config, "CAPTURE_RETRIES", 3)
+RETRY_WAIT = getattr(config, "CAPTURE_RETRY_WAIT", 15)  # 秒
+
+
+def log(msg):
+    print(f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S} {msg}", flush=True)
+
+
+def mask(text):
+    return text.replace(config.CAMERA_PASS, "****") if config.CAMERA_PASS else text
+
+
+def grab_frame():
+    """1フレーム取得。成功で None、失敗でエラー文字列を返す。"""
+    if os.path.exists(TMP_RAW):
+        os.remove(TMP_RAW)  # 前回の残骸で成功と誤判定しないように
+    try:
+        r = subprocess.run([
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-rtsp_transport", "tcp",
+            "-timeout", "10000000",          # RTSP接続のタイムアウト(マイクロ秒)
+            "-i", config.RTSP_URL,
+            "-frames:v", "1",
+            "-q:v", "2",
+            "-update", "1",
+            TMP_RAW,
+        ], capture_output=True, timeout=40)
+    except subprocess.TimeoutExpired:
+        return "ffmpeg タイムアウト(40秒)"
+    if os.path.exists(TMP_RAW) and os.path.getsize(TMP_RAW) > 0:
+        return None
+    return mask(r.stderr.decode(errors="replace").strip()) or f"ffmpeg 終了コード {r.returncode}"
+
 
 os.makedirs(TMP_DIR, exist_ok=True)
 os.makedirs(RETRY_DIR, exist_ok=True)
 
-print("撮影中...")
-result = subprocess.run([
-    "ffmpeg", "-y",
-    "-rtsp_transport", "tcp",
-    "-i", config.RTSP_URL,
-    "-frames:v", "1",
-    "-q:v", "2",
-    "-update", "1",
-    TMP_RAW
-], capture_output=True, timeout=30)
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")  # 撮影開始時刻で固定
+log(f"撮影開始 ({timestamp})")
 
-if not os.path.exists(TMP_RAW):
-    print("撮影失敗")
-    print(result.stderr.decode().replace(config.CAMERA_PASS, "****"))
-    exit(1)
+for attempt in range(1, RETRIES + 1):
+    err = grab_frame()
+    if err is None:
+        break
+    log(f"撮影失敗 ({attempt}/{RETRIES}回目): {err}")
+    if attempt < RETRIES:
+        time.sleep(RETRY_WAIT)
+else:
+    log("撮影失敗: リトライ上限に達しました")
+    sys.exit(1)
 
 img = Image.open(TMP_RAW)
 img = img.resize((RESIZE_W, int(img.height * RESIZE_W / img.width)))
@@ -40,15 +78,11 @@ while quality >= 10:
         break
     quality -= 5
 
-timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
 out_path = f"{TMP_DIR}/{timestamp}.jpg"
 with open(out_path, "wb") as f:
     f.write(buf.getvalue())
-
-size_kb = buf.tell() / 1024
-print(f"✅ 完了: {out_path}")
-print(f"   サイズ: {size_kb:.1f}KB / quality={quality}")
 os.remove(TMP_RAW)
+log(f"✅ 撮影完了: {out_path} ({buf.tell() / 1024:.1f}KB / quality={quality})")
 
 # ConoHaへSCP転送
 result = subprocess.run([
@@ -61,8 +95,8 @@ result = subprocess.run([
 ], capture_output=True)
 
 if result.returncode == 0:
-    print("✅ ConoHa転送成功")
+    log("✅ ConoHa転送成功")
     os.remove(out_path)
 else:
-    print("❌ 転送失敗 → retryへ退避:", result.stderr.decode())
+    log(f"❌ 転送失敗 → retryへ退避: {result.stderr.decode(errors='replace').strip()}")
     shutil.move(out_path, os.path.join(RETRY_DIR, os.path.basename(out_path)))

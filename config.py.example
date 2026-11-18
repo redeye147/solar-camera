@@ -29,6 +29,10 @@ SSH_KEY = "/home/pi/.ssh/id_rsa"     # ConoHaへのSSH鍵パス
 # --- 通知（将来拡張用） ---
 GMAIL_ADDRESS = "your_address@gmail.com"
 
+# --- 撮影リトライ（省略可） ---
+# CAPTURE_RETRIES = 3                    # カメラが応答しないときの撮影試行回数
+# CAPTURE_RETRY_WAIT = 15                # 撮り直しまでの待ち時間(秒)
+
 # --- ネットワーク監視 / リトライ（省略可。未設定時は既定値） ---
 # GSM_CONNECTION = "nihontsushin"        # SIMドングルのNetworkManager接続名 (予備回線)
 # NM_CONNECTION = "eth0-auto"            # 有線LANの接続名 (優先回線)
