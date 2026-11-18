@@ -155,7 +155,8 @@ sudo nmcli connection modify eth0-auto ipv4.never-default no ipv4.route-metric 6
 2. LAN だけ不通で SIM が生きていれば、eth0 の metric を下げて SIM に切替（LAN 復帰で自動的に戻す）
 3. どの経路でも出られないときは段階的に復旧: SIM再接続 → モデムリセット → LAN再接続
 4. 復旧できない状態が `NET_REBOOT_AFTER_RUNS` 回（既定6回=30分）続くごとに再起動
-5. 復旧時・経路変更（wwan0⇔eth0）時に `network_alert.txt`（直近200行）を ConoHa へ送信
+5. 異常（断の検出・復旧、SIM切替、再起動）だけを `network_alert.txt` に記録し、まだ送っていない行だけを ConoHa の `network_alert.txt` に追記（ConoHa の `daily_report.py` が毎日 20:30 にメールし、送信後に消す）
+6. 経路変更（ケーブル抜き差しなど）は異常ではないので `network.log` に記録するだけ
 
 ### 月次サマリー（`monthly_composite.py`）
 
