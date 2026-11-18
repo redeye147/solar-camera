@@ -25,6 +25,7 @@
 | `monthly_composite.py` | 当月の毎日12:00画像をグリッド合成し、月次サマリー画像を生成 |
 | `monthly_traffic.py` | SIM(wwan0)の通信量を課金期間でvnstat集計しレポート転送 |
 | `mode_test.sh` / `mode_production.sh` | Wi-Fiの有効/無効切替（保守用/本番用） |
+| `setup_site_network.sh` | 現場（ルーター無し）用に eth0 の予備固定IPプロファイルを作成 |
 | `index.html` | カメラ画像閲覧UI（日次・サムネイル・手動撮影） |
 | `monthly.html` | 月次サマリー閲覧UI |
 | `config.py.example` | 設定テンプレート（カメラIP/パスワード等） |
@@ -146,6 +147,24 @@ sudo nmcli connection modify eth0-auto ipv4.never-default no ipv4.route-metric 6
 
 - LAN のゲートウェイはあるのにインターネットに出られないとき（ルーター/回線障害）は、`check_network.py` が eth0 の metric を 900 に下げて SIM に切り替え、LAN が戻れば 600 に戻します。
 - モデム（SIM）側の metric 変更は `nmcli device reapply` では反映されず、SIM の経路が消えることがあるため、必ず `nmcli connection up` で張り直すこと。
+
+### 現場（ルーター無し）での eth0 固定IP
+
+現場には DHCP を配るルーターが無いため、Pi とカメラの両方に固定IPが必要です。
+
+| 機器 | 自宅（ルーターあり） | 現場（ルーター無し） |
+| --- | --- | --- |
+| Pi の eth0 | `eth0-auto`（DHCP、優先度10） | DHCP が30秒で失敗すると `eth0-site`（固定IP・ゲートウェイ無し）に自動切替 |
+| カメラ | 固定IP（カメラ側で設定） | 同じ固定IP |
+
+```bash
+./setup_site_network.sh 192.168.1.50/24   # ルーターの DHCP 割当範囲外の空きアドレス
+```
+
+- カメラ（Reolink）はアプリ／Web設定で DHCP → 静的（固定）IP に変更し、`config.py` の `CAMERA_HOST` と一致させる。
+- Pi とカメラの固定IPは、自宅ルーターの DHCP 割当範囲の外にすること（重複防止）。
+- `eth0-site` で動作中は、`check_network.py` の復旧処理は LAN（DHCP）を張り直さない。
+- 自宅に戻してケーブルを挿し直すと、`eth0-auto`（DHCP）が優先して使われる。
 
 > Tailscale のノードは管理画面で **Disable key expiry** にしておくこと（既定の180日で期限切れになり遠隔接続できなくなる）。
 
