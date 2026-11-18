@@ -36,6 +36,7 @@ GMAIL_ADDRESS = "your_address@gmail.com"
 # --- ネットワーク監視 / リトライ（省略可。未設定時は既定値） ---
 # GSM_CONNECTION = "nihontsushin"        # SIMドングルのNetworkManager接続名 (予備回線)
 # NM_CONNECTION = "eth0-auto"            # 有線LANの接続名 (優先回線)
+# SITE_CONNECTION = "eth0-site"          # 現場用の固定IPプロファイル名 (setup_site_network.sh で作成)
 # LAN_IFACE = "eth0"
 # LAN_METRIC = 600                       # 通常時の eth0 metric (SIMの700より優先)
 # LAN_FALLBACK_METRIC = 900              # LAN不通時に下げる値 (SIM優先になる)

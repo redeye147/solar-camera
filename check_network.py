@@ -15,7 +15,7 @@ LANフェイルオーバー:
 復旧の段階 (どの経路でも出られないとき):
   1. SIM接続の張り直し (nmcli down/up)
   2. モデムのリセット (mmcli --reset)
-  3. LAN接続の張り直し
+  3. LAN接続の張り直し (現場用の固定IP eth0-site で動作中は行わない)
   4. それでも断が続けば NET_REBOOT_AFTER_RUNS 回ごとに再起動
 
 通知: 異常 (断の検出/復旧、SIM切替、再起動など) だけを network_alert.txt に
@@ -38,6 +38,7 @@ LOCK = os.path.join(BASE, ".check_network.lock")
 
 GSM_CONN = getattr(config, "GSM_CONNECTION", "nihontsushin")
 LAN_CONN = getattr(config, "NM_CONNECTION", "eth0-auto")
+SITE_CONN = getattr(config, "SITE_CONNECTION", "eth0-site")  # 現場用の固定IP
 TARGETS = getattr(config, "PING_TARGETS", ["1.1.1.1", "8.8.8.8"])
 REBOOT_AFTER = getattr(config, "NET_REBOOT_AFTER_RUNS", 6)  # 0 で再起動しない
 LAN_DEV = getattr(config, "LAN_IFACE", "eth0")
@@ -137,7 +138,16 @@ def step_modem_reset():
     nmcli("connection", "up", GSM_CONN)
 
 
+def active_lan_conn():
+    r = run(["nmcli", "-g", "GENERAL.CONNECTION", "device", "show", LAN_DEV])
+    return r.stdout.strip() if r and r.returncode == 0 else ""
+
+
 def step_lan_reconnect():
+    # 現場用の固定IP (eth0-site) で動いているときは触らない。
+    # DHCP (eth0-auto) を張り直すと固定IPが外れてカメラに届かなくなるため。
+    if active_lan_conn() == SITE_CONN:
+        return
     nmcli("connection", "up", LAN_CONN)
 
 
