@@ -18,8 +18,11 @@ LANフェイルオーバー:
   3. LAN接続の張り直し
   4. それでも断が続けば NET_REBOOT_AFTER_RUNS 回ごとに再起動
 
-通知: 断の最中はConoHaへ送れないため、復旧時・経路変更時に
-      network_alert.txt (直近 MAX_ALERT_LINES 行) を送る。
+通知: 異常 (断の検出/復旧、SIM切替、再起動など) だけを network_alert.txt に
+      記録し、まだ送っていない行 (network_alert_pending.txt) を、インターネットに
+      出られるときに ConoHa の network_alert.txt へ追記する。
+      ConoHa 側の daily_report.py が毎日メールで送り、送信後にファイルを消す。
+      経路変更 (ケーブル抜き差し等) は異常ではないので標準出力 (network.log) のみ。
 
 cron 例: */5 * * * * /usr/bin/python3 /home/pi/solar/check_network.py
 """
@@ -29,6 +32,7 @@ import config
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ALERT = getattr(config, "NETWORK_ALERT_LOCAL", os.path.join(BASE, "network_alert.txt"))
+PENDING = os.path.join(BASE, "network_alert_pending.txt")  # ConoHa未送信分
 STATE = getattr(config, "NETWORK_STATE", os.path.join(BASE, "network_state.json"))
 LOCK = os.path.join(BASE, ".check_network.lock")
 
@@ -50,15 +54,21 @@ def now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def log(msg):
+def log(msg, alert=True):
+    """標準出力 (cron で network.log へ) に記録。alert=True なら通知対象にもする。"""
+    line = f"{now()} {msg}\n"
+    print(line, end="", flush=True)
+    if not alert:
+        return
     lines = []
     if os.path.exists(ALERT):
         with open(ALERT) as f:
             lines = f.readlines()
-    lines.append(f"{now()} {msg}\n")
-    with open(ALERT, "w") as f:
+    lines.append(line)
+    with open(ALERT, "w") as f:  # 手元の履歴 (直近 MAX_ALERT_LINES 行)
         f.writelines(lines[-MAX_ALERT_LINES:])
-    print(msg)
+    with open(PENDING, "a") as f:
+        f.write(line)
 
 
 def run(cmd, timeout=60):
@@ -162,16 +172,27 @@ def save_state(s):
         json.dump(s, f)
 
 
-def send_alert_to_conoha():
-    if not os.path.exists(ALERT):
+def send_pending_alerts():
+    """未送信の異常記録だけを ConoHa の通知ファイルへ追記する。成功したら消す。"""
+    if not os.path.exists(PENDING):
         return
-    run([
-        "scp", "-i", config.SSH_KEY,
-        "-o", "StrictHostKeyChecking=accept-new",
-        "-o", "ConnectTimeout=15",
-        ALERT,
-        f"{config.CONOHA_USER}@{config.CONOHA_HOST}:{config.CONOHA_NETWORK_ALERT}",
-    ], timeout=60)
+    with open(PENDING) as f:
+        data = f.read()
+    if not data.strip():
+        os.remove(PENDING)
+        return
+    try:
+        r = subprocess.run([
+            "ssh", "-i", config.SSH_KEY,
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "ConnectTimeout=15",
+            f"{config.CONOHA_USER}@{config.CONOHA_HOST}",
+            f"cat >> {config.CONOHA_NETWORK_ALERT}",
+        ], input=data, capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        return
+    if r.returncode == 0:
+        os.remove(PENDING)
 
 
 def minutes_since(ts):
@@ -181,19 +202,15 @@ def minutes_since(ts):
 
 def on_online(state):
     dev = route_dev()
-    notify = False
     if state.get("down_since"):
         log(f"インターネット復旧 (経路: {dev}, 断 {minutes_since(state['down_since'])}分)")
-        notify = True
     elif state.get("dev") and dev and dev != state["dev"]:
-        log(f"経路変更 {state['dev']} → {dev}")
-        notify = True
+        log(f"経路変更 {state['dev']} → {dev}", alert=False)  # 異常ではない
     state.pop("down_since", None)
     state.pop("fail_runs", None)
     state["dev"] = dev
     save_state(state)
-    if notify:
-        send_alert_to_conoha()
+    send_pending_alerts()  # 出られるうちに未送信分を送る
 
 
 def try_lan_failover(state):

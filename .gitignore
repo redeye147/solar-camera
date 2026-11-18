@@ -25,5 +25,7 @@ Thumbs.db
 # 実行時の状態ファイル
 network_state.json
 network_alert.txt
+network_alert_pending.txt
+network_alert_old.txt
 .check_network.lock
 retry/
