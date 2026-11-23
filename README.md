@@ -27,7 +27,7 @@
 | 月次合成 | Pi `monthly_composite.py`（毎日21:05）→ ConoHa `monthly/` |
 | 通信量 | Pi `monthly_traffic.py`（毎月7日）→ ConoHa `traffic_report.txt` → 20:30 のメール |
 | 遠隔保守 | Tailscale（`ssh pi@solarcam`）。状態の一覧は `~/solar/status.sh` |
-| 定期再起動 | Pi crontab `0 3 * * *`（再起動後に SIM が繋がらなければ `check_network.py` が自動復旧） |
+| 定期再起動 | Pi crontab `0 3 * * *`（再起動後に SIM が繋がらなければ `check_network.py` が数分で自動復旧。起動直後に直ったものは通知しない） |
 
 ## ファイル一覧
 
@@ -208,6 +208,7 @@ sudo nmcli connection modify eth0-auto ipv4.never-default no ipv4.route-metric 6
 3. どの経路でも出られないときは段階的に復旧: SIM再接続 → ModemManager再起動 → モデムリセット → LAN再接続
    - 起動時に ModemManager が QMI ポート（`cdc-wdm0`）を取りこぼし、AT ポート（`ttyUSB2`）だけで認識してデータ接続できないことがある（EC25）。ModemManager の再起動で直る
 - 予備回線（SIM）の健康診断: LAN で通信中も毎回 SIM 経由の疎通を確認し、だめなら SIM だけ復旧（30分に1回まで）して異常・復旧を通知
+- 起動から10分以内に検出して自動で直った断・SIM不調は記録（`network.log`）だけで通知しない（毎日3時の再起動直後は SIM がつながらないことが多く、ModemManager 再起動で直るため）。10分を過ぎても直らなければ通知
 4. 復旧できない状態が `NET_REBOOT_AFTER_RUNS` 回（既定6回=30分）続くごとに再起動
 5. 異常（断の検出・復旧、SIM切替、再起動）だけを `network_alert.txt` に記録し、まだ送っていない行だけを ConoHa の `network_alert.txt` に追記（ConoHa の `daily_report.py` が毎日 20:30 にメールし、送信後に消す）
 6. 経路変更（ケーブル抜き差しなど）は異常ではないので `network.log` に記録するだけ

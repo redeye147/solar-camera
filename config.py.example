@@ -41,6 +41,7 @@ GMAIL_ADDRESS = "your_address@gmail.com"
 # LAN_METRIC = 600                       # 通常時の eth0 metric (SIMの700より優先)
 # LAN_FALLBACK_METRIC = 900              # LAN不通時に下げる値 (SIM優先になる)
 # PING_TARGETS = ["1.1.1.1", "8.8.8.8"]  # 疎通確認先
+# NET_BOOT_GRACE_MINUTES = 10           # 起動直後この分数内に直った断・SIM不調は通知しない
 # NET_REBOOT_AFTER_RUNS = 6              # 復旧失敗がこの回数続くごとに再起動 (0で無効)
 # NETWORK_ALERT_LOCAL = "/home/pi/solar/network_alert.txt"
 # NETWORK_STATE = "/home/pi/solar/network_state.json"
