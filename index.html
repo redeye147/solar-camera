@@ -135,15 +135,41 @@ function showImg(f){
 function requestCapture(){
   const btn=document.getElementById('capture-btn');
   const msg=document.getElementById('capture-msg');
+  const started=Math.floor(Date.now()/1000);
+  const deadline=Date.now()+6*60*1000;  // Pi は2分ごとに確認、撮り直し込みで最大4分程度
+  const show=(text,color)=>{msg.textContent=text;msg.style.color=color||'#8f8';};
+  const reset=()=>{btn.disabled=false;btn.textContent='今すぐ撮影';};
   btn.disabled=true;
   btn.textContent='撮影中...';
-  msg.textContent='約2分後に最新画像が追加されます';
+  show('撮影を依頼しました（Raspberry Pi が受け取るまで最大2分ほどかかります）');
+
+  const check=()=>{
+    if(Date.now()>deadline){
+      show('Raspberry Pi から応答がありません（電源・通信を確認してください）','#f88');
+      reset();
+      return;
+    }
+    fetch('capture_result.json?t='+Date.now(),{cache:'no-store'})
+      .then(r=>r.ok?r.json():null).catch(()=>null)
+      .then(res=>{
+        if(res&&res.finished_ts>=started-60){
+          if(res.status==='failed'){show(res.message,'#f88');reset();return;}
+          show(res.message+'。画面を更新します');
+          setTimeout(()=>location.reload(),3000);
+        }else{
+          setTimeout(check,10000);
+        }
+      });
+  };
+
   fetch('/capture',{method:'POST'})
-    .then(()=>{setTimeout(()=>location.reload(),120000);})
-    .catch(()=>{
-      msg.textContent='エラーが発生しました';
-      btn.disabled=false;
-      btn.textContent='今すぐ撮影';
+    .then(r=>{
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      setTimeout(check,10000);
+    })
+    .catch(err=>{
+      show('撮影を依頼できませんでした（'+err.message+'）','#f88');
+      reset();
     });
 }
 

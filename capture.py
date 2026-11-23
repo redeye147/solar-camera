@@ -18,6 +18,7 @@ MAX_BYTES = 62500
 RESIZE_W  = 1280
 RETRIES   = getattr(config, "CAPTURE_RETRIES", 3)
 RETRY_WAIT = getattr(config, "CAPTURE_RETRY_WAIT", 15)  # 秒
+# 終了コード: 0=撮影・転送成功 / 1=撮影失敗 / 2=撮影成功・転送失敗(retryへ退避)
 
 
 def log(msg):
@@ -100,3 +101,4 @@ if result.returncode == 0:
 else:
     log(f"❌ 転送失敗 → retryへ退避: {result.stderr.decode(errors='replace').strip()}")
     shutil.move(out_path, os.path.join(RETRY_DIR, os.path.basename(out_path)))
+    sys.exit(2)  # 撮影は成功・転送待ち（poll.py が再送する）
