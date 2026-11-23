@@ -12,6 +12,9 @@ LANフェイルオーバー:
   ときは、eth0 の metric を LAN_FALLBACK_METRIC(900) に下げて SIM に切替。
   切替中も毎回 LAN 経由の疎通を試し、戻ったら LAN_METRIC に戻す。
 
+起動直後 (NET_BOOT_GRACE_MINUTES=10分以内) に検出して自動で直った断・SIM不調は
+記録だけで通知しない (毎日3時の再起動で毎回起きるため)。猶予後も直らなければ通知。
+
 予備回線(SIM)の健康診断:
   LAN で通信中も毎回 SIM 経由の疎通を試し、だめなら SIM だけ復旧
   (SIM再接続 → ModemManager再起動) を試みて、異常と復旧を通知する。
@@ -51,6 +54,7 @@ SIM_DEV = getattr(config, "SIM_IFACE", "wwan0")
 LAN_METRIC = getattr(config, "LAN_METRIC", 600)
 LAN_FALLBACK_METRIC = getattr(config, "LAN_FALLBACK_METRIC", 900)
 
+BOOT_GRACE_MIN = getattr(config, "NET_BOOT_GRACE_MINUTES", 10)  # 起動直後の猶予(分)
 SIM_RETRY_MINUTES = 30  # 予備SIMが直らないときの復旧試行の間隔(分)
 GRACE_CHECKS = 4        # 断と判定するまでの確認回数
 GRACE_INTERVAL = 5      # 確認間隔(秒)
@@ -91,6 +95,20 @@ def online():
         if r and r.returncode == 0:
             return True
     return False
+
+
+def booting():
+    """起動から BOOT_GRACE_MIN 分以内か。
+
+    毎日3時の再起動直後は ModemManager が QMI ポートを取りこぼして SIM が
+    つながらないことが多く、自動で直る。これを毎日「異常」として通知しないよう、
+    起動直後に検出して直ったものは記録だけにする (直らなければ猶予後に通知)。
+    """
+    try:
+        with open("/proc/uptime") as f:
+            return float(f.read().split()[0]) < BOOT_GRACE_MIN * 60
+    except (OSError, ValueError):
+        return False
 
 
 def online_via(dev):
@@ -228,10 +246,12 @@ def minutes_since(ts):
 def on_online(state):
     dev = route_dev()
     if state.get("down_since"):
-        log(f"インターネット復旧 (経路: {dev}, 断 {minutes_since(state['down_since'])}分)")
+        log(f"インターネット復旧 (経路: {dev}, 断 {minutes_since(state['down_since'])}分)",
+            alert=state.get("down_alerted", True))
     elif state.get("dev") and dev and dev != state["dev"]:
         log(f"経路変更 {state['dev']} → {dev}", alert=False)  # 異常ではない
     state.pop("down_since", None)
+    state.pop("down_alerted", None)
     state.pop("fail_runs", None)
     state["dev"] = dev
     save_state(state)
@@ -263,18 +283,23 @@ def on_offline(state):
 
     if not state.get("down_since"):
         state["down_since"] = now()
-        log(f"インターネット断を検出 (経路: {route_dev()})")
+        state["down_alerted"] = not booting()  # 起動直後は通知せず記録だけ
+        log(f"インターネット断を検出 (経路: {route_dev()})", alert=state["down_alerted"])
+    elif not state.get("down_alerted", True) and not booting():
+        state["down_alerted"] = True
+        log(f"インターネット断が起動後も続いています ({state['down_since']} から)")
     state["fail_runs"] = state.get("fail_runs", 0) + 1
+    alert = state.get("down_alerted", True)
 
     how = recover(state)
     if how:
-        log(f"復旧処理成功: {how} (経路: {route_dev()})")
+        log(f"復旧処理成功: {how} (経路: {route_dev()})", alert=alert)
         on_online(state)
         return
 
     reboot = REBOOT_AFTER and state["fail_runs"] % REBOOT_AFTER == 0
     if state["fail_runs"] == 1 or reboot:  # ログの連発を避ける
-        log(f"復旧処理失敗 ({state['fail_runs']}回目)")
+        log(f"復旧処理失敗 ({state['fail_runs']}回目)", alert=alert)
     save_state(state)
     if reboot:
         log("断が続いているため再起動します")
@@ -298,22 +323,29 @@ def check_backup_sim(state):
         return  # SIM で通信中 (= SIM は生きている)
     if online_via(SIM_DEV):
         state.pop("sim_retry_at", None)
+        alerted = state.pop("sim_alerted", True)
         if state.pop("sim_down_since", None):
-            log("予備回線(SIM)が復旧しました")
+            log("予備回線(SIM)が復旧しました", alert=alerted)
         return
     if not state.get("sim_down_since"):
         state["sim_down_since"] = now()
-        log("予備回線(SIM)で通信できません → SIMの復旧を試みます")
-    elif minutes_since(state.get("sim_retry_at", state["sim_down_since"])) < SIM_RETRY_MINUTES:
-        return  # 復旧の試行は SIM_RETRY_MINUTES 分に1回まで
+        state["sim_alerted"] = not booting()  # 起動直後は通知せず記録だけ
+        log("予備回線(SIM)で通信できません → SIMの復旧を試みます", alert=state["sim_alerted"])
+    else:
+        if not state.get("sim_alerted", True) and not booting():
+            state["sim_alerted"] = True
+            log(f"予備回線(SIM)が起動後も復旧しません ({state['sim_down_since']} から)")
+        if minutes_since(state.get("sim_retry_at", state["sim_down_since"])) < SIM_RETRY_MINUTES:
+            return  # 復旧の試行は SIM_RETRY_MINUTES 分に1回まで
     state["sim_retry_at"] = now()
     for name, fn in SIM_RECOVERY_STEPS:
         fn()
         time.sleep(5)
         if online_via(SIM_DEV):
-            log(f"予備回線(SIM)が復旧しました ({name})")
+            log(f"予備回線(SIM)が復旧しました ({name})", alert=state.get("sim_alerted", True))
             state.pop("sim_down_since", None)
             state.pop("sim_retry_at", None)
+            state.pop("sim_alerted", None)
             return
 
 
