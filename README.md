@@ -5,15 +5,29 @@
 ## 構成
 
 ```
-[RTSPカメラ] ──RTSP──> [Raspberry Pi Zero] ══SIM(LTE)══> [ConoHa VPS (Web)]
-      │                    │  (USBハブ: LAN+SIMドングル)    │
-      └──── LAN(eth0) ─────┘                              └─ Webブラウザから閲覧
-                           └─ ネットワーク自己復旧 / Tailscaleで遠隔保守
+                    ┌──────────── 現場（ルーター無し） / 自宅 ────────────┐
+[Reolinkカメラ] ─LAN─ [USBハブ(LAN)] ─ [Raspberry Pi Zero "solarcam"] ─ [SIMドングル EC25]
+ 192.168.1.101(固定)                    eth0: 自宅=DHCP / 現場=192.168.1.50(固定)    │
+                                        Tailscale: 100.93.198.46                    │ LTE（日本通信SIM）
+                                                                                    ▼
+          ┌──────────────── ConoHa VPS（solar.redeye-lab.com）────────────────┐
+          │ nginx: 閲覧サイト /images /monthly、/capture → solar-trigger(:5001) │
+          │ cron: check_rpi.py（毎時・撮影停止監視）/ daily_report.py（20:30）   │
+          └──────────────────────────────┬──────────────────────────────────────┘
+                                         ▼ Gmail（→ LINE 転送）
 ```
 
-- **Raspberry Pi**: 撮影、ネットワーク監視、月次サマリー生成
-- **ConoHa VPS**: 画像配信、トリガーファイル経由の手動撮影リクエスト受付
-- **ブラウザUI** (`index.html` / `monthly.html`): 日付選択、サムネイル、手動撮影ボタン、月次合成画像
+| 流れ | 仕組み |
+| --- | --- |
+| 定時撮影 | Pi `capture.py`（4〜20時の毎時0分）→ カメラ RTSP → ConoHa `images/` へ scp |
+| 今すぐ撮影 | ブラウザ → ConoHa `/capture` → `trigger` 作成 → Pi `poll.py`（2分ごと）が撮影して削除 |
+| 転送失敗 | Pi `retry/` に退避 → `poll.py` が再送 |
+| ネットワーク監視 | Pi `check_network.py`（5分ごと）→ 異常だけ ConoHa `network_alert.txt` に追記 → `daily_report.py`（20:30）がメール |
+| 撮影停止監視 | ConoHa `check_rpi.py`（毎時）→ 予定の撮影が2回続けて届かなければ [緊急]、再開で [復旧] |
+| 月次合成 | Pi `monthly_composite.py`（毎日21:05）→ ConoHa `monthly/` |
+| 通信量 | Pi `monthly_traffic.py`（毎月7日）→ ConoHa `traffic_report.txt` → 20:30 のメール |
+| 遠隔保守 | Tailscale（`ssh pi@solarcam`）。状態の一覧は `~/solar/status.sh` |
+| 定期再起動 | Pi crontab `0 3 * * *`（再起動後に SIM が繋がらなければ `check_network.py` が自動復旧） |
 
 ## ファイル一覧
 
@@ -29,6 +43,8 @@
 | `index.html` | カメラ画像閲覧UI（日次・サムネイル・手動撮影） |
 | `monthly.html` | 月次サマリー閲覧UI |
 | `config.py.example` | 設定テンプレート（カメラIP/パスワード等） |
+| `status.sh` | solarcam と ConoHa の状態を一覧表示 |
+| `server/` | ConoHa 側のスクリプト・設定（`deploy.sh` で配置。`capture_trigger.py`・nginx・systemd は現物の写し） |
 | `.gitignore` | `config.py` 等の除外設定 |
 
 ## セットアップ

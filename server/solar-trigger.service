@@ -1,0 +1,12 @@
+# /etc/systemd/system/solar-trigger.service（ConoHa 上の設定の写し）
+[Unit]
+Description=Solar Camera Trigger
+After=network.target
+
+[Service]
+User=solar
+ExecStart=/usr/bin/python3 /home/solar/capture_trigger.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
