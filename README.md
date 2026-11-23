@@ -40,6 +40,7 @@
 | `monthly_traffic.py` | SIM(wwan0)の通信量を課金期間でvnstat集計しレポート転送 |
 | `mode_test.sh` / `mode_production.sh` | Wi-Fiの有効/無効切替（保守用/本番用） |
 | `setup_site_network.sh` | 現場（ルーター無し）用に eth0 の予備固定IPプロファイルを作成 |
+| `setup_modem_delay.sh` | ModemManager の起動を遅らせ、起動直後に SIM がつながらない問題を防ぐ |
 | `index.html` | カメラ画像閲覧UI（日次・サムネイル・手動撮影） |
 | `monthly.html` | 月次サマリー閲覧UI |
 | `config.py.example` | 設定テンプレート（カメラIP/パスワード等） |
@@ -208,6 +209,7 @@ sudo nmcli connection modify eth0-auto ipv4.never-default no ipv4.route-metric 6
 3. どの経路でも出られないときは段階的に復旧: SIM再接続 → ModemManager再起動 → モデムリセット → LAN再接続
    - 起動時に ModemManager が QMI ポート（`cdc-wdm0`）を取りこぼし、AT ポート（`ttyUSB2`）だけで認識してデータ接続できないことがある（EC25）。ModemManager の再起動で直る
 - 予備回線（SIM）の健康診断: LAN で通信中も毎回 SIM 経由の疎通を確認し、だめなら SIM だけ復旧（30分に1回まで）して異常・復旧を通知
+- `setup_modem_delay.sh`: ModemManager の起動を30秒遅らせ（systemd drop-in）、起動直後の QMI ポート取りこぼし自体を防ぐ（一度実行すればよい）
 - 起動から10分以内に検出して自動で直った断・SIM不調は記録（`network.log`）だけで通知しない（毎日3時の再起動直後は SIM がつながらないことが多く、ModemManager 再起動で直るため）。10分を過ぎても直らなければ通知
 4. 復旧できない状態が `NET_REBOOT_AFTER_RUNS` 回（既定6回=30分）続くごとに再起動
 5. 異常（断の検出・復旧、SIM切替、再起動）だけを `network_alert.txt` に記録し、まだ送っていない行だけを ConoHa の `network_alert.txt` に追記（ConoHa の `daily_report.py` が毎日 20:30 にメールし、送信後に消す）
