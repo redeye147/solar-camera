@@ -146,6 +146,7 @@ sudo nmcli connection modify eth0-auto ipv4.never-default no ipv4.route-metric 6
 ```
 
 - LAN のゲートウェイはあるのにインターネットに出られないとき（ルーター/回線障害）は、`check_network.py` が eth0 の metric を 900 に下げて SIM に切り替え、LAN が戻れば 600 に戻します。
+- SIM の接続設定は特定のポート名に固定しない（`sudo nmcli connection modify nihontsushin connection.interface-name ""`）。モデムの見え方が変わってもつながるようにするため。
 - モデム（SIM）側の metric 変更は `nmcli device reapply` では反映されず、SIM の経路が消えることがあるため、必ず `nmcli connection up` で張り直すこと。
 
 ### 現場（ルーター無し）での eth0 固定IP
@@ -172,7 +173,9 @@ sudo nmcli connection modify eth0-auto ipv4.never-default no ipv4.route-metric 6
 
 1. 1.1.1.1 / 8.8.8.8 への ping で「インターネットに出られるか」を判定（約15秒の猶予で瞬断は無視）
 2. LAN だけ不通で SIM が生きていれば、eth0 の metric を下げて SIM に切替（LAN 復帰で自動的に戻す）
-3. どの経路でも出られないときは段階的に復旧: SIM再接続 → モデムリセット → LAN再接続
+3. どの経路でも出られないときは段階的に復旧: SIM再接続 → ModemManager再起動 → モデムリセット → LAN再接続
+   - 起動時に ModemManager が QMI ポート（`cdc-wdm0`）を取りこぼし、AT ポート（`ttyUSB2`）だけで認識してデータ接続できないことがある（EC25）。ModemManager の再起動で直る
+- 予備回線（SIM）の健康診断: LAN で通信中も毎回 SIM 経由の疎通を確認し、だめなら SIM だけ復旧（30分に1回まで）して異常・復旧を通知
 4. 復旧できない状態が `NET_REBOOT_AFTER_RUNS` 回（既定6回=30分）続くごとに再起動
 5. 異常（断の検出・復旧、SIM切替、再起動）だけを `network_alert.txt` に記録し、まだ送っていない行だけを ConoHa の `network_alert.txt` に追記（ConoHa の `daily_report.py` が毎日 20:30 にメールし、送信後に消す）
 6. 経路変更（ケーブル抜き差しなど）は異常ではないので `network.log` に記録するだけ

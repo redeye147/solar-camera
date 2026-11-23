@@ -12,11 +12,16 @@ LANフェイルオーバー:
   ときは、eth0 の metric を LAN_FALLBACK_METRIC(900) に下げて SIM に切替。
   切替中も毎回 LAN 経由の疎通を試し、戻ったら LAN_METRIC に戻す。
 
+予備回線(SIM)の健康診断:
+  LAN で通信中も毎回 SIM 経由の疎通を試し、だめなら SIM だけ復旧
+  (SIM再接続 → ModemManager再起動) を試みて、異常と復旧を通知する。
+
 復旧の段階 (どの経路でも出られないとき):
   1. SIM接続の張り直し (nmcli down/up)
-  2. モデムのリセット (mmcli --reset)
-  3. LAN接続の張り直し (現場用の固定IP eth0-site で動作中は行わない)
-  4. それでも断が続けば NET_REBOOT_AFTER_RUNS 回ごとに再起動
+  2. ModemManager の再起動 (QMIポートの取りこぼし対策)
+  3. モデムのリセット (mmcli --reset)
+  4. LAN接続の張り直し (現場用の固定IP eth0-site で動作中は行わない)
+  5. それでも断が続けば NET_REBOOT_AFTER_RUNS 回ごとに再起動
 
 通知: 異常 (断の検出/復旧、SIM切替、再起動など) だけを network_alert.txt に
       記録し、まだ送っていない行 (network_alert_pending.txt) を、インターネットに
@@ -46,6 +51,7 @@ SIM_DEV = getattr(config, "SIM_IFACE", "wwan0")
 LAN_METRIC = getattr(config, "LAN_METRIC", 600)
 LAN_FALLBACK_METRIC = getattr(config, "LAN_FALLBACK_METRIC", 900)
 
+SIM_RETRY_MINUTES = 30  # 予備SIMが直らないときの復旧試行の間隔(分)
 GRACE_CHECKS = 4        # 断と判定するまでの確認回数
 GRACE_INTERVAL = 5      # 確認間隔(秒)
 MAX_ALERT_LINES = 200
@@ -132,6 +138,14 @@ def step_sim_reconnect():
     nmcli("connection", "up", GSM_CONN)
 
 
+def step_mm_restart():
+    # 起動時に ModemManager が QMI ポート(cdc-wdm0)を取りこぼし、AT ポート(ttyUSB2)
+    # だけで認識してデータ接続できなくなることがある (EC25)。再起動で認識し直させる。
+    run(["sudo", "systemctl", "restart", "ModemManager"], timeout=60)
+    time.sleep(40)  # モデム再認識待ち
+    nmcli("connection", "up", GSM_CONN)
+
+
 def step_modem_reset():
     run(["sudo", "mmcli", "-m", "any", "--reset"], timeout=30)
     time.sleep(60)  # モデム再認識待ち
@@ -153,6 +167,7 @@ def step_lan_reconnect():
 
 RECOVERY_STEPS = [
     ("SIM再接続", step_sim_reconnect),
+    ("ModemManager再起動", step_mm_restart),
     ("モデムリセット", step_modem_reset),
     ("LAN再接続", step_lan_reconnect),
 ]
@@ -266,6 +281,42 @@ def on_offline(state):
         run(["sudo", "reboot"])
 
 
+SIM_RECOVERY_STEPS = [
+    ("SIM再接続", step_sim_reconnect),
+    ("ModemManager再起動", step_mm_restart),
+]
+
+
+def check_backup_sim(state):
+    """LAN で通信中も、予備の SIM が使えるかを確かめる。
+
+    自宅では LAN で出られるため SIM の故障に気づけない (再起動後に SIM が
+    つながらず、そのまま現場に設置すると遠隔操作できなくなる)。
+    SIM 経由で出られなければ SIM だけ復旧を試み、異常・復旧を通知する。
+    """
+    if route_dev() == SIM_DEV:
+        return  # SIM で通信中 (= SIM は生きている)
+    if online_via(SIM_DEV):
+        state.pop("sim_retry_at", None)
+        if state.pop("sim_down_since", None):
+            log("予備回線(SIM)が復旧しました")
+        return
+    if not state.get("sim_down_since"):
+        state["sim_down_since"] = now()
+        log("予備回線(SIM)で通信できません → SIMの復旧を試みます")
+    elif minutes_since(state.get("sim_retry_at", state["sim_down_since"])) < SIM_RETRY_MINUTES:
+        return  # 復旧の試行は SIM_RETRY_MINUTES 分に1回まで
+    state["sim_retry_at"] = now()
+    for name, fn in SIM_RECOVERY_STEPS:
+        fn()
+        time.sleep(5)
+        if online_via(SIM_DEV):
+            log(f"予備回線(SIM)が復旧しました ({name})")
+            state.pop("sim_down_since", None)
+            state.pop("sim_retry_at", None)
+            return
+
+
 def main():
     lock = open(LOCK, "w")
     try:
@@ -276,6 +327,7 @@ def main():
     state = load_state()
     try_lan_restore(state)
     if online() or not confirmed_offline():
+        check_backup_sim(state)
         on_online(state)
     else:
         on_offline(state)
