@@ -115,6 +115,22 @@ Raspberry Pi の crontab：
 - `mode_test.sh` — Wi-Fi を有効化（自宅での保守用）
 - `mode_production.sh` — Wi-Fi を無効化（現場運用）
 
+### 7. ConoHa 側スクリプト（`server/`）
+
+| ファイル | 役割 | ConoHa の cron |
+| --- | --- | --- |
+| `server/check_rpi.py` | 撮影予定（4〜20時の毎時）に対し画像が2回続けて届かなければ停止アラート、再開で復旧通知 | `0 * * * *` |
+| `server/daily_report.py` | Pi から追記された異常ログ・通信量レポートを毎日メールし、送信後に削除 | `30 20 * * *` |
+| `server/mailer.py` | 共通のメール送信。認証情報は `~/.solar_mail.conf`（chmod 600、リポジトリ外） | — |
+
+Raspberry Pi から配置する（既存スクリプトは `~/backup_日時/` に退避。初回は既存の `daily_report.py` から `~/.solar_mail.conf` を作成）:
+
+```bash
+cd ~/solar && server/deploy.sh
+```
+
+通知の設定確認（テストメール送信）は ConoHa で `python3 ~/check_rpi.py --test`。
+
 ## 動作概要
 
 ### 自動撮影フロー（`capture.py`）
