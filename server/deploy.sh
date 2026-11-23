@@ -1,5 +1,6 @@
 #!/bin/bash
-# Raspberry Pi から ConoHa へサーバー側スクリプト（server/）を配置する。
+# Raspberry Pi から ConoHa へサーバー側スクリプト（server/）と閲覧サイトの画面
+# （index.html / monthly.html）を配置する。
 #   cd ~/solar && server/deploy.sh
 # - 初回のみ、既存の daily_report.py から Gmail 認証情報を取り出して
 #   ~/.solar_mail.conf (chmod 600) を作る（パスワードは表示しない）
@@ -7,7 +8,7 @@
 #   元に戻すとき: ConoHa で cp -p ~/backup_日時/*.py ~/
 set -euo pipefail
 cd "$(dirname "$0")/.."
-eval "$(python3 -c "import config;print(f'H={config.CONOHA_USER}@{config.CONOHA_HOST} K={config.SSH_KEY}')")"
+eval "$(python3 -c "import config;print(f'H={config.CONOHA_USER}@{config.CONOHA_HOST} K={config.SSH_KEY} W={config.CONOHA_REMOTE_BASE}')")"
 SSH_OPTS=(-i "$K" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15)
 
 ssh "${SSH_OPTS[@]}" "$H" 'bash -s' <<'REMOTE'
@@ -34,5 +35,6 @@ echo "既存スクリプトの退避先: ~/$b"
 REMOTE
 
 scp "${SSH_OPTS[@]}" server/mailer.py server/check_rpi.py server/daily_report.py "$H":
+scp "${SSH_OPTS[@]}" index.html monthly.html "$H:$W/"   # 閲覧サイトの画面
 echo "配置完了。動作確認:"
 ssh "${SSH_OPTS[@]}" "$H" 'cd ~ && python3 check_rpi.py'
