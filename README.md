@@ -137,7 +137,7 @@ Raspberry Pi の crontab：
 | ファイル | 役割 | ConoHa の cron |
 | --- | --- | --- |
 | `server/check_rpi.py` | 撮影予定（4〜20時の毎時）に対し画像が2回続けて届かなければ停止アラート、再開で復旧通知 | `0 * * * *` |
-| `server/daily_report.py` | Pi から追記された異常ログ・通信量レポートを毎日メールし、送信後に削除 | `30 20 * * *` |
+| `server/daily_report.py` | Pi から追記された異常ログ・通信量レポートを毎日メール（異常ログは直近60日・最新20件まで）。送信後は全件を `~/archive/` に追記保存して元ファイルを削除 | `30 20 * * *` |
 | `server/mailer.py` | 共通のメール送信。認証情報は `~/.solar_mail.conf`（chmod 600、リポジトリ外） | — |
 
 Raspberry Pi から配置する（既存スクリプトは `~/backup_日時/` に退避。初回は既存の `daily_report.py` から `~/.solar_mail.conf` を作成）:
