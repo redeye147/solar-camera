@@ -28,13 +28,17 @@ PY
 fi
 test -f .solar_mail.conf || { echo "~/.solar_mail.conf がありません（server/mail.conf.example 参照）"; exit 1; }
 b=backup_$(date +%Y%m%d_%H%M%S); mkdir -p "$b"
-for f in mailer.py check_rpi.py daily_report.py; do
+for f in mailer.py check_rpi.py daily_report.py mieloop.py line_daily_report.py; do
   if [ -e "$f" ]; then cp -p "$f" "$b/"; rm -f "$f"; fi
 done
 echo "既存スクリプトの退避先: ~/$b"
 REMOTE
 
-scp "${SSH_OPTS[@]}" server/mailer.py server/check_rpi.py server/daily_report.py "$H":
+scp "${SSH_OPTS[@]}" server/mailer.py server/check_rpi.py server/daily_report.py \
+    server/mieloop.py server/line_daily_report.py "$H":
 scp "${SSH_OPTS[@]}" index.html monthly.html "$H:$W/"   # 閲覧サイトの画面
+# LINE 日報（毎日 22:00）の cron が無ければ追加（何度実行しても1行だけ）
+ssh "${SSH_OPTS[@]}" "$H" 'crontab -l 2>/dev/null | grep -q line_daily_report.py || \
+  { crontab -l 2>/dev/null; echo "0 22 * * * /usr/bin/python3 /home/solar/line_daily_report.py >> /home/solar/line_daily_report.log 2>&1"; } | crontab -'
 echo "配置完了。動作確認:"
 ssh "${SSH_OPTS[@]}" "$H" 'cd ~ && python3 check_rpi.py'

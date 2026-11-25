@@ -143,6 +143,8 @@ Raspberry Pi の crontab：
 | --- | --- | --- |
 | `server/check_rpi.py` | 撮影予定（4〜20時の毎時）に対し画像が2回続けて届かなければ停止アラート、再開で復旧通知 | `0 * * * *` |
 | `server/daily_report.py` | Pi から追記された異常ログ・通信量レポートを毎日メール（異常ログは直近60日・最新20件まで）。送信後は全件を `~/archive/` に追記保存して元ファイルを削除 | `30 20 * * *` |
+| `server/line_daily_report.py` | LINE 用の日報メール（発電量・金額・日射量・気温・今月累計・PCS/回線の状態・12時の写真）。件名「[日報]」を Gmail の GAS が LINE に転送。PCS の発電量の差・発電効率の低下・みえるーぷの警報・撮影の欠けを ⚠️ で知らせる。`--dry-run` で送らずに表示 | `0 22 * * *` |
+| `server/mieloop.py` | みえるーぷ（発電所の監視サービス）にログインし、日別 CSV（発電量・金額・日射量・気温）と警報一覧を取得。ログイン情報は `~/.solar_mieloop.conf`（chmod 600、リポジトリ外） | — |
 | `server/mailer.py` | 共通のメール送信。認証情報は `~/.solar_mail.conf`（chmod 600、リポジトリ外） | — |
 
 Raspberry Pi から配置する（既存スクリプトは `~/backup_日時/` に退避。初回は既存の `daily_report.py` から `~/.solar_mail.conf` を作成）:
