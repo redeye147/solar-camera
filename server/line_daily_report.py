@@ -45,12 +45,15 @@ def sky(irr):
 
 def solar_section(today, warnings):
     """発電量の行と、発電に関する警告を返す。取得できなければ説明の行を返す。"""
+    step = "ログイン"
     try:
         from mieloop import Mieloop
         m = Mieloop()
+        step = "CSV取得"
         hist = m.days(today - timedelta(days=60), today)
     except Exception as e:
-        warnings.append(f"⚠️ みえるーぷから発電量を取得できません（{type(e).__name__}）")
+        code = getattr(e, "code", "")
+        warnings.append(f"⚠️ みえるーぷから発電量を取得できません（{step}: {type(e).__name__} {code}）".replace(" ）", "）"))
         return ["☀ 発電量 取得できませんでした"], False
 
     by_date = {r["date"]: r for r in hist}

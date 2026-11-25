@@ -60,12 +60,19 @@ class Mieloop:
             v = re.search(r'value="([^"]*)"', tag)
             if n:
                 fields[n.group(1)] = html.unescape(v.group(1)) if v else ""
+        # 日付などの選択式の欄（<select>）も、選ばれている値（無ければ先頭）を送る
+        for name, body in re.findall(r'<select[^>]*name="([^"]+)"[^>]*>(.*?)</select>', form, re.S):
+            sel = re.search(r'<option[^>]*value="([^"]*)"[^>]*selected', body)
+            first = re.search(r'<option[^>]*value="([^"]*)"', body)
+            fields[name] = sel.group(1) if sel else (first.group(1) if first else "")
         return fields
 
     def days(self, start, end, pcs_id=""):
         """日別データ [{date, kwh, yen, irr, temp}]（irr=平均日射量 W/m2, temp=平均気温）。"""
         f = self._csv_form()
         f.update({"type": "day", "pcs_id": pcs_id,
+                  "date[year]": end.year, "date[month]": f"{end.month:02d}",
+                  "date[day]": f"{end.day:02d}",
                   "start_date[year]": start.year, "start_date[month]": f"{start.month:02d}",
                   "start_date[day]": f"{start.day:02d}",
                   "end_date[year]": end.year, "end_date[month]": f"{end.month:02d}",
