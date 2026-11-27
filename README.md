@@ -20,7 +20,7 @@
 | 流れ | 仕組み |
 | --- | --- |
 | 定時撮影 | Pi `capture.py`（4〜20時の毎時0分）→ カメラ RTSP → ConoHa `images/` へ scp |
-| 今すぐ撮影 | ブラウザ → ConoHa `/capture` → `trigger` 作成 → Pi `poll.py`（2分ごと）が撮影し、結果を `capture_result.json` に書いて `trigger` を削除 → 画面が成功・失敗を表示 |
+| 今すぐ撮影 | ブラウザ → ConoHa `/capture` → `trigger` 作成 → Pi `poll.py`（2分ごと）が撮影し、結果を `shot_result.json` に書いて `trigger` を削除 → 画面が成功・失敗を表示 |
 | 転送失敗 | Pi `retry/` に退避 → `poll.py` が再送 |
 | ネットワーク監視 | Pi `check_network.py`（5分ごと）→ 異常だけ ConoHa `network_alert.txt` に追記 → `daily_report.py`（20:30）がメール |
 | 撮影停止監視 | ConoHa `check_rpi.py`（毎時）→ 予定の撮影が2回続けて届かなければ [緊急]、再開で [復旧] |
