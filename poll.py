@@ -7,15 +7,12 @@
 """
 import glob, json, os, subprocess, sys, time
 import config
+import conoha_ssh
 
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 RETRY_DIR = getattr(config, "RETRY_DIR", os.path.join(BASE_DIR, "retry"))
 RESULT    = getattr(config, "CONOHA_CAPTURE_RESULT",
                     f"{os.path.dirname(config.CONOHA_TRIGGER)}/capture_result.json")
-SSH_OPTS  = ["-i", config.SSH_KEY,
-             "-o", "StrictHostKeyChecking=accept-new",
-             "-o", "ConnectTimeout=15"]
-REMOTE    = f"{config.CONOHA_USER}@{config.CONOHA_HOST}"
 MESSAGES  = {
     "ok": "撮影しました",
     "upload_pending": "撮影しましたが転送に失敗しました（自動で再送します）",
@@ -24,23 +21,12 @@ MESSAGES  = {
 os.makedirs(RETRY_DIR, exist_ok=True)
 
 
-def ssh(cmd, data=None, timeout=30):
-    try:
-        return subprocess.run(["ssh", *SSH_OPTS, REMOTE, cmd], input=data,
-                              capture_output=True, text=True, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        return None
+ssh = conoha_ssh.ssh  # 接続を使い回す（通信量を減らすため）
 
 
 # 転送待ち画像の再送
 for f in sorted(glob.glob(f"{RETRY_DIR}/*.jpg")):
-    try:
-        r = subprocess.run(["scp", *SSH_OPTS, f, f"{REMOTE}:{config.CONOHA_IMG_DIR}/"],
-                           capture_output=True, timeout=120)
-        ok = r.returncode == 0
-    except subprocess.TimeoutExpired:
-        ok = False
-    if ok:
+    if conoha_ssh.ok(conoha_ssh.scp_to(f, f"{config.CONOHA_IMG_DIR}/")):
         print(f"✅ リトライ転送成功: {os.path.basename(f)}")
         os.remove(f)
     else:
