@@ -149,7 +149,7 @@ function requestCapture(){
       reset();
       return;
     }
-    fetch('capture_result.json?t='+Date.now(),{cache:'no-store'})
+    fetch('shot_result.json?t='+Date.now(),{cache:'no-store'})
       .then(r=>r.ok?r.json():null).catch(()=>null)
       .then(res=>{
         if(res&&res.finished_ts>=started-60){

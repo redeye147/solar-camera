@@ -2,8 +2,9 @@
 """2分ごとに実行（cron）: 転送待ち画像の再送と、手動撮影トリガーの確認。
 
 閲覧サイトの「今すぐ撮影」→ ConoHa に trigger ファイル → ここで撮影し、
-結果を ConoHa の capture_result.json に書いてから trigger を消す。
-画面（index.html）は capture_result.json を見て成功・失敗を表示する。
+結果を ConoHa の shot_result.json に書いてから trigger を消す。
+画面（index.html）は shot_result.json を見て成功・失敗を表示する。
+※ 名前を /capture で始めないこと（nginx の location /capture に吸い込まれて 404 になる）。
 """
 import fcntl, glob, json, os, subprocess, sys, time
 import config
@@ -12,7 +13,7 @@ import conoha_ssh
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 RETRY_DIR = getattr(config, "RETRY_DIR", os.path.join(BASE_DIR, "retry"))
 RESULT    = getattr(config, "CONOHA_CAPTURE_RESULT",
-                    f"{os.path.dirname(config.CONOHA_TRIGGER)}/capture_result.json")
+                    f"{os.path.dirname(config.CONOHA_TRIGGER)}/shot_result.json")
 MESSAGES  = {
     "ok": "撮影しました",
     "upload_pending": "撮影しましたが転送に失敗しました（自動で再送します）",
