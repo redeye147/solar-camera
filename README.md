@@ -27,7 +27,7 @@
 | 月次合成 | Pi `monthly_composite.py`（毎日21:05）→ ConoHa `monthly/` |
 | 通信量 | Pi `monthly_traffic.py`（毎月7日）→ ConoHa `traffic_report.txt` → 20:30 のメール |
 | 遠隔保守 | Tailscale（`ssh pi@solarcam`）。状態の一覧は `~/solar/status.sh` |
-| 定期再起動 | Pi crontab `45 2 * * *` で `power_cut_prepare.sh`: SD カードを読み取り専用にしてタイマーコンセントの電源断（2:50〜2:55）を待つ。電源が切れなければ 3:05 に自分で再起動（切り替えは `setup_power_timer.sh`、旧方式は `0 3 * * *` の reboot） |
+| 定期再起動 | Pi crontab `40 2 * * *` で `power_cut_prepare.sh`: SD カードを読み取り専用にしてタイマーコンセントの電源断（2:50〜2:55）を待つ。電源が切れなければ 3:10 に自分で再起動（タイマーの時計が10分進んでも20分遅れても安全）（切り替えは `setup_power_timer.sh`、旧方式は `0 3 * * *` の reboot） |
 
 ## ファイル一覧
 
@@ -41,7 +41,7 @@
 | `mode_test.sh` / `mode_production.sh` | Wi-Fiの有効/無効切替（保守用/本番用） |
 | `setup_site_network.sh` | 現場（ルーター無し）用に eth0 の予備固定IPプロファイルを作成 |
 | `setup_modem_delay.sh` | ModemManager の起動を遅らせ、起動直後に SIM がつながらない問題を防ぐ |
-| `power_cut_prepare.sh` | 毎日 2:45 に SD カードを読み取り専用にし、タイマーコンセントの電源断を待つ（来なければ自分で再起動） |
+| `power_cut_prepare.sh` | 毎日 2:40 に SD カードを読み取り専用にし、タイマーコンセントの電源断を待つ（来なければ自分で再起動） |
 | `auto_update.sh` | 毎日 21:30 に GitHub の main を自動適用。更新前の健康診断・文法チェック、更新後の健康診断とログのエラー確認を行い、だめなら自動で元の版に戻す（`--install` で cron 登録、`.no_auto_update` で一時停止） |
 | `setup_power_timer.sh` | crontab の毎日の再起動を `power_cut_prepare.sh` 方式に切り替える（`--revert` で元に戻す） |
 | `index.html` | カメラ画像閲覧UI（日次・サムネイル・手動撮影） |
@@ -123,8 +123,8 @@ Raspberry Pi の crontab：
 # 5分毎にネットワーク自己診断
 */5 * * * * /usr/bin/python3 /home/pi/solar/check_network.py >> /home/pi/solar/network.log 2>&1
 
-# 毎日2:45に SD を読み取り専用にしてタイマーコンセントの電源断を待つ（setup_power_timer.sh で設定）
-45 2 * * * sudo /home/pi/solar/power_cut_prepare.sh
+# 毎日2:40に SD を読み取り専用にしてタイマーコンセントの電源断（2:50〜2:55）を待つ（setup_power_timer.sh で設定）
+40 2 * * * sudo /home/pi/solar/power_cut_prepare.sh
 
 # 毎日21:05に当月の月次合成を更新
 5 21 * * * /usr/bin/python3 /home/pi/solar/monthly_composite.py >> /home/pi/solar/monthly.log 2>&1
