@@ -38,6 +38,7 @@
 | `check_network.py` | eth0の疎通を監視し、切断時にNetworkManagerで自動復旧 |
 | `monthly_composite.py` | 当月の毎日12:00画像をグリッド合成し、月次サマリー画像を生成 |
 | `monthly_traffic.py` | SIM(wwan0)の通信量を課金期間でvnstat集計しレポート転送 |
+| `conoha_ssh.py` | Python からの ConoHa への SSH/SCP をまとめた共通部品（接続を使い回して通信量を節約） |
 | `mode_test.sh` / `mode_production.sh` | Wi-Fiの有効/無効切替（保守用/本番用） |
 | `setup_site_network.sh` | 現場（ルーター無し）用に eth0 の予備固定IPプロファイルを作成 |
 | `setup_modem_delay.sh` | ModemManager の起動を遅らせ、起動直後に SIM がつながらない問題を防ぐ |
@@ -249,6 +250,14 @@ tail ~/solar/update.log                    # 実行の記録
 
 - vnstat の日別データから wwan0 の通信量を b-mobile の課金期間（既定: 7日〜翌月6日、`BILLING_START_DAY`）で集計し、上限（既定1000MB）に対する使用率を `traffic_report.txt` として転送
 - `monthly_traffic.py --current` で今期の途中経過と期間末の見込みを表示（転送はしない）
+
+### ConoHa への接続の使い回し（`conoha_ssh.py`）
+
+- 新しく SSH 接続するたびに鍵交換・認証で数 KB を使い、2分ごとの `poll.py` だけで月 100MB 近くになるため、最初の接続を `~/.ssh/solar-conoha.sock` として最大5分残し、次からはその中を通す（OpenSSH の ControlMaster）
+- 回線の切り替え（LAN⇔SIM）や断のあとは `check_network.py` が古い接続を閉じる。使い回しで失敗したときも、その場で閉じて新しい接続でやり直す
+- 通信量を増やさないよう、生存確認のパケット（ServerAlive）は使わない
+- 使い回し中か確認: `ssh -o ControlPath=~/.ssh/solar-conoha.sock -O check x`（`Master running` と出れば使い回し中）
+- `status.sh`・`server/deploy.sh`・`auto_update.sh` の健康診断は回数が少ないので、毎回新しく接続する
 
 ## ライセンス
 

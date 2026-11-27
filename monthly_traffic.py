@@ -108,13 +108,10 @@ def main():
     tmp = "/tmp/traffic_report.txt"
     with open(tmp, "w") as f:
         f.write(report)
-    r = subprocess.run(["scp", "-i", config.SSH_KEY,
-                        "-o", "StrictHostKeyChecking=accept-new",
-                        "-o", "ConnectTimeout=15",
-                        tmp, f"{config.CONOHA_USER}@{config.CONOHA_HOST}:{REMOTE_FILE}"],
-                       capture_output=True, timeout=60)
+    import conoha_ssh
+    r = conoha_ssh.scp_to(tmp, REMOTE_FILE, timeout=60)
     os.remove(tmp)
-    print("ConoHa転送完了" if r.returncode == 0 else f"ConoHa転送失敗: {r.stderr.decode()}")
+    print("ConoHa転送完了" if conoha_ssh.ok(r) else f"ConoHa転送失敗: {conoha_ssh.err(r)}")
 
 
 if __name__ == "__main__":

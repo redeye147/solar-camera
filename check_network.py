@@ -37,6 +37,7 @@ cron 例: */5 * * * * /usr/bin/python3 /home/pi/solar/check_network.py
 import fcntl, json, os, subprocess, sys, time
 from datetime import datetime
 import config
+import conoha_ssh
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ALERT = getattr(config, "NETWORK_ALERT_LOCAL", os.path.join(BASE, "network_alert.txt"))
@@ -147,6 +148,7 @@ def set_lan_metric(metric):
     # eth0 は reapply で metric が反映される (モデムには効かないので使わない)
     nmcli("connection", "modify", LAN_CONN, "ipv4.route-metric", str(metric))
     nmcli("device", "reapply", LAN_DEV)
+    conoha_ssh.close_master()  # 経路が変わると使い回し中の SSH 接続は使えない
     time.sleep(3)
 
 
@@ -224,17 +226,8 @@ def send_pending_alerts():
     if not data.strip():
         os.remove(PENDING)
         return
-    try:
-        r = subprocess.run([
-            "ssh", "-i", config.SSH_KEY,
-            "-o", "StrictHostKeyChecking=accept-new",
-            "-o", "ConnectTimeout=15",
-            f"{config.CONOHA_USER}@{config.CONOHA_HOST}",
-            f"cat >> {config.CONOHA_NETWORK_ALERT}",
-        ], input=data, capture_output=True, text=True, timeout=60)
-    except subprocess.TimeoutExpired:
-        return
-    if r.returncode == 0:
+    r = conoha_ssh.ssh(f"cat >> {config.CONOHA_NETWORK_ALERT}", data=data)
+    if conoha_ssh.ok(r):
         os.remove(PENDING)
 
 
@@ -250,6 +243,8 @@ def on_online(state):
             alert=state.get("down_alerted", True))
     elif state.get("dev") and dev and dev != state["dev"]:
         log(f"経路変更 {state['dev']} → {dev}", alert=False)  # 異常ではない
+    if state.get("down_since") or (state.get("dev") and dev != state["dev"]):
+        conoha_ssh.close_master()  # 断・経路変更の前の SSH 接続は使えないので作り直させる
     state.pop("down_since", None)
     state.pop("down_alerted", None)
     state.pop("fail_runs", None)

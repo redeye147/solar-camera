@@ -9,6 +9,7 @@
 import subprocess, datetime, os, io, shutil, sys, time
 from PIL import Image
 import config
+import conoha_ssh
 
 TMP_RAW   = "/tmp/capture_raw.jpg"
 TMP_DIR   = "/tmp/solar"
@@ -86,19 +87,12 @@ os.remove(TMP_RAW)
 log(f"✅ 撮影完了: {out_path} ({buf.tell() / 1024:.1f}KB / quality={quality})")
 
 # ConoHaへSCP転送
-result = subprocess.run([
-    "scp",
-    "-i", config.SSH_KEY,
-    "-o", "StrictHostKeyChecking=accept-new",
-    "-o", "ConnectTimeout=30",
-    out_path,
-    f"{config.CONOHA_USER}@{config.CONOHA_HOST}:{config.CONOHA_IMG_DIR}/"
-], capture_output=True)
+result = conoha_ssh.scp_to(out_path, f"{config.CONOHA_IMG_DIR}/")  # 接続を使い回す
 
-if result.returncode == 0:
+if conoha_ssh.ok(result):
     log("✅ ConoHa転送成功")
     os.remove(out_path)
 else:
-    log(f"❌ 転送失敗 → retryへ退避: {result.stderr.decode(errors='replace').strip()}")
+    log(f"❌ 転送失敗 → retryへ退避: {conoha_ssh.err(result)}")
     shutil.move(out_path, os.path.join(RETRY_DIR, os.path.basename(out_path)))
     sys.exit(2)  # 撮影は成功・転送待ち（poll.py が再送する）
