@@ -154,8 +154,12 @@ function requestCapture(){
       .then(res=>{
         if(res&&res.finished_ts>=started-60){
           if(res.status==='failed'){show(res.message,'#f88');reset();return;}
-          show(res.message+'。画面を更新します');
-          setTimeout(()=>location.reload(),3000);
+          // 開き直したあとも結果が残るように覚えておく
+          const t=new Date(res.finished_ts*1000);
+          const hm=String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
+          try{sessionStorage.setItem('capture_msg','✅ '+res.message+'（'+hm+'）');}catch(e){}
+          show(res.message+'。新しい写真を表示します');
+          setTimeout(()=>location.reload(),1500);
         }else{
           setTimeout(check,10000);
         }
@@ -195,6 +199,12 @@ fetch('images/')
     initSelectors(allFiles);
     const today=dateStr(new Date());
     setDate(today);
+    let done=null;
+    try{done=sessionStorage.getItem('capture_msg');sessionStorage.removeItem('capture_msg');}catch(e){}
+    if(done){
+      const msg=document.getElementById('capture-msg');
+      msg.textContent=done;msg.style.color='#8f8';
+    }
   });
 </script>
 </body>
