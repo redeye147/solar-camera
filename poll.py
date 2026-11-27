@@ -5,7 +5,7 @@
 結果を ConoHa の capture_result.json に書いてから trigger を消す。
 画面（index.html）は capture_result.json を見て成功・失敗を表示する。
 """
-import glob, json, os, subprocess, sys, time
+import fcntl, glob, json, os, subprocess, sys, time
 import config
 import conoha_ssh
 
@@ -19,6 +19,14 @@ MESSAGES  = {
     "failed": "撮影に失敗しました（カメラが応答しません）",
 }
 os.makedirs(RETRY_DIR, exist_ok=True)
+
+# 撮影や再送が長引いて次の poll（2分後）と重なったら、後のほうは何もしない
+_lock = open(os.path.join(BASE_DIR, ".poll.lock"), "w")
+try:
+    fcntl.flock(_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    print("前回の poll がまだ動いているため終了")
+    sys.exit(0)
 
 
 ssh = conoha_ssh.ssh  # 接続を使い回す（通信量を減らすため）

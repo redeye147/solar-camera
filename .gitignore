@@ -28,4 +28,5 @@ network_alert.txt
 network_alert_pending.txt
 network_alert_old.txt
 .check_network.lock
+.poll.lock
 retry/
