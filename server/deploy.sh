@@ -4,7 +4,7 @@
 #   cd ~/solar && server/deploy.sh
 # - 初回のみ、既存の daily_report.py から Gmail 認証情報を取り出して
 #   ~/.solar_mail.conf (chmod 600) を作る（パスワードは表示しない）
-# - 既存のスクリプトは ~/backup_日時/ に退避してから入れ替える
+# - 既存のスクリプトは ~/backup_日時/ に退避してから入れ替える（新しい順に5個まで残す）
 #   元に戻すとき: ConoHa で cp -p ~/backup_日時/*.py ~/
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -32,6 +32,12 @@ for f in mailer.py check_rpi.py daily_report.py mieloop.py line_daily_report.py;
   if [ -e "$f" ]; then cp -p "$f" "$b/"; rm -f "$f"; fi
 done
 echo "既存スクリプトの退避先: ~/$b"
+# 退避先は新しい順に5個だけ残す（deploy.sh が作る backup_年月日_時分秒 だけが対象）
+old=$(ls -1d backup_????????_?????? 2>/dev/null | sort | head -n -5)
+if [ -n "$old" ]; then
+  echo "$old" | xargs rm -rf
+  echo "古い退避先を削除: $(echo $old)"
+fi
 REMOTE
 
 scp "${SSH_OPTS[@]}" server/mailer.py server/check_rpi.py server/daily_report.py \
