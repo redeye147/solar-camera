@@ -9,7 +9,7 @@
 
 知らせる異常（⚠️）:
   - PCS のどちらかの発電量が、もう一方の半分未満（一部停止の可能性）
-  - 晴れの日（平均日射量 100W/m2 以上）なのに、発電効率（kWh÷日射量）が
+  - 晴れの日（平均日射量 100W/m2 以上）が EFF_STREAK 回続けて、発電効率（kWh÷日射量）が
     直近60日の晴れの日の中央値の 85% 未満（汚れ・影・故障の可能性）
   - みえるーぷの警報（軽故障・重故障、毎晩の「DC入力不足電圧」以外の通知）
   - 撮影の欠け、ネットワークの異常、撮影停止アラート
@@ -27,7 +27,9 @@ CAPTURE_HOURS = range(4, 21)          # 定時撮影 4〜20時
 PCS_IDS = ["1", "2"]
 SUNNY_IRR = 100                       # 晴れとみなす平均日射量 (W/m2)
 EFF_WARN_RATIO = 0.85                 # 平常の発電効率に対してこれ未満で警告
-EFF_MIN_SAMPLES = 7                   # 平常値の計算に必要な晴れの日の数
+EFF_MIN_SAMPLES = 5                   # 平常値の計算に必要な晴れの日の数
+EFF_STREAK = 3                        # 晴れの日がこの回数続けて低いときだけ警告
+EFF_BASE_DAYS = 30                    # 平常値に使う期間（日）。季節の変化に追従するため短め
 PCS_WARN_RATIO = 0.5                  # PCS 間の発電量の比がこれ未満で警告
 ROUTINE_ALERT_CODES = {"0064"}        # 毎晩の DC入力不足電圧（日没）は知らせない
 WEEKDAY = "月火水木金土日"
@@ -41,6 +43,28 @@ def sky(irr):
     if irr is None:
         return "☀"
     return "☀" if irr >= SUNNY_IRR else ("⛅" if irr >= 50 else "☁")
+
+
+def efficiency_streak(hist, today):
+    """直近の晴れの日 EFF_STREAK 回（今日を含む）がすべて平常の EFF_WARN_RATIO 未満なら
+    その比率のリストを、そうでなければ None を返す。
+
+    発電効率 = 発電量 ÷ 平均日射量。曇りの日は計算上高めに出るので晴れの日だけを使う。
+    日が短くなる季節には少しずつ下がるため、平常値は直近 EFF_BASE_DAYS 日の
+    晴れの日の中央値（判定対象の日は除く）とする。
+    """
+    sunny = [(r["date"], r["kwh"] / r["irr"]) for r in hist
+             if r["date"] <= today and r["kwh"] and r["irr"] and r["irr"] >= SUNNY_IRR]
+    if len(sunny) < EFF_STREAK or sunny[-1][0] != today:
+        return None                                   # 今日が晴れでなければ判定しない
+    recent = sunny[-EFF_STREAK:]
+    start = recent[0][0]
+    base = [e for d, e in sunny if start - timedelta(days=EFF_BASE_DAYS) <= d < start]
+    if len(base) < EFF_MIN_SAMPLES:
+        return None
+    med = statistics.median(base)
+    ratios = [e / med for _, e in recent]
+    return ratios if all(r < EFF_WARN_RATIO for r in ratios) else None
 
 
 def solar_section(today, warnings):
@@ -75,14 +99,12 @@ def solar_section(today, warnings):
         lines.append("☀ 発電量 今日のデータがまだありません")
     lines.append(f"📅 今月 {mk:,.0f} kWh（{yen(my)}）")
 
-    # 発電効率（晴れの日だけで比べる）
-    if t and t["kwh"] and t["irr"] and t["irr"] >= SUNNY_IRR:
-        base = [r["kwh"] / r["irr"] for d, r in by_date.items()
-                if d < today and r["kwh"] and r["irr"] and r["irr"] >= SUNNY_IRR]
-        if len(base) >= EFF_MIN_SAMPLES:
-            ratio = (t["kwh"] / t["irr"]) / statistics.median(base)
-            if ratio < EFF_WARN_RATIO:
-                warnings.append(f"⚠️ 発電効率が平常の {ratio:.0%}（パネルの汚れ・影・故障の可能性）")
+    # 発電効率の低下（晴れの日が EFF_STREAK 回続けて平常の 85% 未満のときだけ警告）
+    ratios = efficiency_streak(hist, today)
+    if ratios:
+        txt = "・".join(f"{r:.0%}" for r in ratios)
+        warnings.append(f"⚠️ 発電効率の低下が晴れの日 {EFF_STREAK} 回続いています"
+                        f"（平常の {txt}）パネルの汚れ・影・故障の可能性")
 
     # PCS ごとの発電量（取れる場合だけ比べる）
     try:
