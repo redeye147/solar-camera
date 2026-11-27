@@ -42,6 +42,7 @@
 | `setup_site_network.sh` | 現場（ルーター無し）用に eth0 の予備固定IPプロファイルを作成 |
 | `setup_modem_delay.sh` | ModemManager の起動を遅らせ、起動直後に SIM がつながらない問題を防ぐ |
 | `power_cut_prepare.sh` | 毎日 2:45 に SD カードを読み取り専用にし、タイマーコンセントの電源断を待つ（来なければ自分で再起動） |
+| `auto_update.sh` | 毎日 21:30 に GitHub の main を自動適用。更新前の健康診断・文法チェック、更新後の健康診断とログのエラー確認を行い、だめなら自動で元の版に戻す（`--install` で cron 登録、`.no_auto_update` で一時停止） |
 | `setup_power_timer.sh` | crontab の毎日の再起動を `power_cut_prepare.sh` 方式に切り替える（`--revert` で元に戻す） |
 | `index.html` | カメラ画像閲覧UI（日次・サムネイル・手動撮影） |
 | `monthly.html` | 月次サマリー閲覧UI |
@@ -188,6 +189,24 @@ sudo nmcli connection modify eth0-auto ipv4.never-default no ipv4.route-metric 6
 - LAN のゲートウェイはあるのにインターネットに出られないとき（ルーター/回線障害）は、`check_network.py` が eth0 の metric を 900 に下げて SIM に切り替え、LAN が戻れば 600 に戻します。
 - SIM の接続設定は特定のポート名に固定しない（`sudo nmcli connection modify nihontsushin connection.interface-name ""`）。モデムの見え方が変わってもつながるようにするため。
 - モデム（SIM）側の metric 変更は `nmcli device reapply` では反映されず、SIM の経路が消えることがあるため、必ず `nmcli connection up` で張り直すこと。
+
+### 自動更新（`auto_update.sh`）
+
+現場の Pi は毎日 21:30 に GitHub の `main` を自動で取り込む。止まって現地に行くことにならないよう、次の順で安全を確かめる。
+
+1. 一時停止ファイル `~/solar/.no_auto_update` があれば何もしない（大きな変更の前に `touch`、終わったら `rm`）
+2. 更新前の健康診断（インターネット・ConoHa・カメラ・Tailscale）。異常があれば更新しない
+3. 新しい版の文法チェック（Python・sh）。誤りがあれば更新しない
+4. 適用後、約6分待って（check_network・poll が新しいコードで動く）健康診断とログの Traceback を確認。だめなら元の版に戻す
+5. `server/`・画面のファイルが変わっていれば ConoHa へ配置
+6. 結果（更新・見送り・巻き戻し）は異常通知として 20:30 のメールに載る
+
+自動で更新するのはリポジトリのファイルだけ。crontab・NetworkManager・systemd などのシステム設定は手動で行う。
+
+```bash
+cd ~/solar && ./auto_update.sh --install   # cron に登録（30 21 * * *）
+tail ~/solar/update.log                    # 実行の記録
+```
 
 ### 現場（ルーター無し）での eth0 固定IP
 
