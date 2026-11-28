@@ -17,6 +17,7 @@ LOG=/home/pi/solar/network.log
 
 echo "$(date '+%F %T') 電源断の準備: SDカードを読み取り専用にします（${WAIT}秒以内に電源が切れなければ再起動）" >> "$LOG"
 fake-hwclock save 2>/dev/null   # 再起動後に使う時刻を保存（NTP で正確な時刻に直るまでのつなぎ）
+journalctl --sync 2>/dev/null   # システムのログを書き出す（setup_persistent_journal.sh で保存している場合）
 sync
 echo s > /proc/sysrq-trigger    # ディスクへ書き出し
 sleep 2
