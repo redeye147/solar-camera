@@ -42,6 +42,7 @@
 | `mode_test.sh` / `mode_production.sh` | Wi-Fiの有効/無効切替（保守用/本番用） |
 | `setup_site_network.sh` | 現場（ルーター無し）用に eth0 の予備固定IPプロファイルを作成 |
 | `setup_modem_delay.sh` | ModemManager の起動を遅らせ、起動直後に SIM がつながらない問題を防ぐ |
+| `setup_persistent_journal.sh` | システムのログを SD カードに残し（上限50MB）、再起動後も USB 切断・電圧低下などの原因を調べられるようにする。`--undo` で元に戻す |
 | `power_cut_prepare.sh` | 毎日 2:40 に SD カードを読み取り専用にし、タイマーコンセントの電源断を待つ（来なければ自分で再起動） |
 | `auto_update.sh` | 毎日 21:30 に GitHub の main を自動適用。更新前の健康診断・文法チェック、更新後の健康診断とログのエラー確認を行い、だめなら自動で元の版に戻す（`--install` で cron 登録、`.no_auto_update` で一時停止） |
 | `setup_power_timer.sh` | crontab の毎日の再起動を `power_cut_prepare.sh` 方式に切り替える（`--revert` で元に戻す） |
@@ -237,6 +238,7 @@ tail ~/solar/update.log                    # 実行の記録
    - 起動時に ModemManager が QMI ポート（`cdc-wdm0`）を取りこぼし、AT ポート（`ttyUSB2`）だけで認識してデータ接続できないことがある（EC25）。ModemManager の再起動で直る
 - 予備回線（SIM）の健康診断: LAN で通信中も毎回 SIM 経由の疎通を確認し、だめなら SIM だけ復旧（30分に1回まで）して異常・復旧を通知
 - `setup_modem_delay.sh`: ModemManager の起動を30秒遅らせ（systemd drop-in）、起動直後の QMI ポート取りこぼし自体を防ぐ（一度実行すればよい）
+- `setup_persistent_journal.sh`: システムのログを再起動後も残す（上限50MB）。再起動・停止の原因は `journalctl --list-boots` で起動を選び、`journalctl -b -1 -k`（1つ前の起動のカーネルログ）などで調べる
 - 起動から10分以内に検出して自動で直った断・SIM不調は記録（`network.log`）だけで通知しない（毎日3時の再起動直後は SIM がつながらないことが多く、ModemManager 再起動で直るため）。10分を過ぎても直らなければ通知
 4. 復旧できない状態が `NET_REBOOT_AFTER_RUNS` 回（既定6回=30分）続くごとに再起動
 5. 異常（断の検出・復旧、SIM切替、再起動）だけを `network_alert.txt` に記録し、まだ送っていない行だけを ConoHa の `network_alert.txt` に追記（ConoHa の `daily_report.py` が毎日 20:30 にメールし、送信後に消す）
